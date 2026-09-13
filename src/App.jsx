@@ -1554,6 +1554,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
         await addDoc(collection(db, "users", uid, "workouts", wRef.id, "exercises"), {
           name: ex.name, order: i + 1, sets: cleanSets, muscleGroup: ex.muscleGroup || null,
           durationSec: durationSec || null, primaryGroup, primarySets, secondarySets,
+          supersetId: ex.supersetId || null,
         });
         onAddToLibrary("exercises", ex.name, ex.muscleGroup);
       }
@@ -1939,7 +1940,7 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
         const { primaryGroup: pg, primarySets: ps, secondarySets: ss } = computeFractionalSets(ex.name, ex.muscleGroup, cleanSets);
         await setDoc(doc(db, "users", uid, "workouts", workout.id, "exercises", ex.id),
           { name: ex.name, muscleGroup: ex.muscleGroup || null, order: ex.order || 0, sets: cleanSets,
-            primaryGroup: pg, primarySets: ps, secondarySets: ss },
+            primaryGroup: pg, primarySets: ps, secondarySets: ss, supersetId: ex.supersetId || null },
           { merge: true }
         );
       }
@@ -2539,49 +2540,69 @@ function HistoryScreen({ uid }) {
           {expanded === w.id && <div style={{ height: 3, background: "var(--yellow)" }} />}
           {expanded === w.id && exercises[w.id] && (
             <div style={{ padding: "12px 16px", background: "var(--cream)" }}>
-              {exercises[w.id].map((ex, i) => (
-                <div key={i} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-                    {ex.order && <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink4)", letterSpacing: "0.04em", flexShrink: 0 }}>{ex.order}.</div>}
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--orange)", letterSpacing: "0.04em" }}>{ex.name.toUpperCase()}</div>
-                    {ex.muscleGroup && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{ex.muscleGroup}</span>}
-                    {ex.durationSec > 0 && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-display)", letterSpacing: "0.06em" }}>⏱ {formatTime(ex.durationSec)}</span>}
-                  </div>
-                  {(() => {
-                    const isCardioEx = CARDIO_MUSCLE_GROUPS.has(ex.muscleGroup);
-                    const hasDuration = (ex.sets || []).some(s => s.duration);
-                    const showCardio = isCardioEx || hasDuration;
-                    const cols = showCardio ? "24px 1fr 1fr" : "24px 1fr 1fr 1fr";
-                    const headers = showCardio ? ["","Duration","Distance"] : ["","Reps","Weight","RIR"];
-                    return (
-                      <>
-                        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 4, marginBottom: 4 }}>
-                          {headers.map((h, i) => <div key={i} style={{ ...labelStyle, textAlign: i > 0 ? "center" : "left", marginBottom: 0 }}>{h}</div>)}
+              {(() => {
+                const renderExerciseBlock = (ex, key) => {
+                  const isCardioEx = CARDIO_MUSCLE_GROUPS.has(ex.muscleGroup);
+                  const hasDuration = (ex.sets || []).some(s => s.duration);
+                  const showCardio = isCardioEx || hasDuration;
+                  const cols = showCardio ? "24px 1fr 1fr" : "24px 1fr 1fr 1fr";
+                  const headers = showCardio ? ["","Duration","Distance"] : ["","Reps","Weight","RIR"];
+                  return (
+                    <div key={key} style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                        {ex.order && <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink4)", letterSpacing: "0.04em", flexShrink: 0 }}>{ex.order}.</div>}
+                        <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--orange)", letterSpacing: "0.04em" }}>{ex.name.toUpperCase()}</div>
+                        {ex.muscleGroup && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{ex.muscleGroup}</span>}
+                        {ex.durationSec > 0 && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-display)", letterSpacing: "0.06em" }}>⏱ {formatTime(ex.durationSec)}</span>}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 4, marginBottom: 4 }}>
+                        {headers.map((h, hi) => <div key={hi} style={{ ...labelStyle, textAlign: hi > 0 ? "center" : "left", marginBottom: 0 }}>{h}</div>)}
+                      </div>
+                      {(ex.sets || []).length === 0 && showCardio ? (
+                        <div style={{ fontSize: 12, color: "var(--ink4)", fontStyle: "italic", padding: "4px 0" }}>No duration or distance recorded</div>
+                      ) : (ex.sets || []).map((set, j) => (
+                        <div key={j} style={{ display: "grid", gridTemplateColumns: cols, gap: 4, marginBottom: 4, padding: "4px 0", borderBottom: "1px solid var(--cream3)" }}>
+                          <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink3)" }}>{j + 1}</div>
+                          {showCardio ? (
+                            <>
+                              <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.duration || "—"}</div>
+                              <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.distance ? `${set.distance} mi` : "—"}</div>
+                            </>
+                          ) : (
+                            <>
+                              <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{formatReps(set) || "—"}</div>
+                              <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.weight ? <>{set.weight}<span style={{ color: "var(--ink4)", fontSize: 11 }}>lb</span></> : "—"}</div>
+                              <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.rir !== "" && set.rir != null ? set.rir : "—"}</div>
+                            </>
+                          )}
                         </div>
-                        {(ex.sets || []).length === 0 && showCardio ? (
-                          <div style={{ fontSize: 12, color: "var(--ink4)", fontStyle: "italic", padding: "4px 0" }}>No duration or distance recorded</div>
-                        ) : (ex.sets || []).map((set, j) => (
-                          <div key={j} style={{ display: "grid", gridTemplateColumns: cols, gap: 4, marginBottom: 4, padding: "4px 0", borderBottom: "1px solid var(--cream3)" }}>
-                            <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink3)" }}>{j + 1}</div>
-                            {showCardio ? (
-                              <>
-                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.duration || "—"}</div>
-                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.distance ? `${set.distance} mi` : "—"}</div>
-                              </>
-                            ) : (
-                              <>
-                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{formatReps(set) || "—"}</div>
-                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.weight ? <>{set.weight}<span style={{ color: "var(--ink4)", fontSize: 11 }}>lb</span></> : "—"}</div>
-                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.rir !== "" && set.rir != null ? set.rir : "—"}</div>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </>
+                      ))}
+                    </div>
+                  );
+                };
+
+                // Group consecutive exercises sharing the same supersetId
+                const groups = [];
+                exercises[w.id].forEach(ex => {
+                  if (ex.supersetId && groups.length > 0 && groups[groups.length - 1].supersetId === ex.supersetId) {
+                    groups[groups.length - 1].items.push(ex);
+                  } else {
+                    groups.push({ supersetId: ex.supersetId || null, items: [ex] });
+                  }
+                });
+
+                return groups.map((group, gi) => {
+                  if (group.supersetId && group.items.length > 1) {
+                    return (
+                      <div key={gi} style={{ borderLeft: "3px solid var(--yellow)", paddingLeft: 10, marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontFamily: "var(--font-label)", color: "var(--ink4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>🔗 Superset</div>
+                        {group.items.map((ex, i) => renderExerciseBlock(ex, `${gi}-${i}`))}
+                      </div>
                     );
-                  })()}
-                </div>
-              ))}
+                  }
+                  return group.items.map((ex, i) => renderExerciseBlock(ex, `${gi}-${i}`));
+                });
+              })()}
             </div>
           )}
         </div>
