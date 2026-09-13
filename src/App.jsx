@@ -14,19 +14,19 @@ document.head.appendChild(fontLink);
 const globalCSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --cream: #f5f0e8; --cream2: #ede8df; --cream3: #e0dbd0;
-    --orange: #FFA500; --orange2: #ffb732; --red: #c0251a; --pink: #e8305a;
-    --black: #111111; --ink: #1a1a1a; --ink2: #3a3a3a; --ink3: #666666; --ink4: #999999;
-    --green: #1a7a3a; --border: #c8c0b0;
-    --card: #ffffff;
+    --cream: #FFFFFF; --cream2: #F5F5F5; --cream3: #E8E8E8;
+    --yellow: #F0C800; --orange: #1C1C1C; --orange2: #F0C800; --red: #c0251a; --pink: #e8305a;
+    --black: #1C1C1C; --ink: #1C1C1C; --ink2: #4A4438; --ink3: #999999; --ink4: #BBBBBB;
+    --green: #1a7a3a; --border: #D0CAC0;
+    --card: #FFFFFF;
     --font-display: 'Bebas Neue', 'Helvetica Neue', Helvetica, Arial, sans-serif;
     --font-label: 'Oswald', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    --font-body: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --font-body: 'Oswald', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   }
   body.dark {
-    --cream: #1a1a1a; --cream2: #242424; --cream3: #2e2e2e;
-    --black: #f0f0f0; --ink: #f0f0f0; --ink2: #cccccc; --ink3: #aaaaaa; --ink4: #777777;
-    --border: #3a3a3a; --green: #2ecc71; --card: #242424;
+    --cream: #121110; --cream2: #1A1814; --cream3: #242018;
+    --black: #E8E2D8; --ink: #E8E2D8; --ink2: #9A9080; --ink3: #4A4438; --ink4: #3A342A;
+    --border: #2A2420; --green: #2ecc71; --card: #1A1814;
   }
   html, body, #root {
     height: 100%; width: 100%; background: var(--cream); color: var(--ink);
@@ -34,23 +34,23 @@ const globalCSS = `
   }
   input, select, button { font-family: var(--font-body); }
   body.dark input, body.dark select, body.dark textarea {
-    background: #2e2e2e !important; color: #f0f0f0 !important; border-color: #3a3a3a !important;
+    background: #1A1814 !important; color: #E8E2D8 !important; border-color: #2A2420 !important;
   }
   body.dark button { color: var(--ink); }
-  body.dark [data-white] { background: #242424 !important; border-color: #3a3a3a !important; color: var(--ink) !important; }
+  body.dark [data-white] { background: #1A1814 !important; border-color: #2A2420 !important; color: var(--ink) !important; }
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: var(--cream2); }
-  ::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb { background: var(--yellow); border-radius: 0; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
   .fade-in { animation: fadeIn 0.25s ease forwards; }
   .stripe-accent { position: relative; }
   .stripe-accent::before {
-    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
-    background: var(--orange); border-radius: 3px 0 0 3px;
+    content: ''; position: absolute; left: 6px; top: 15px; width: 8px; height: 8px;
+    background: var(--yellow);
   }
   .stripe-accent-active::before {
-    background: linear-gradient(to bottom, var(--orange) 50%, var(--pink) 50%); width: 8px;
+    background: var(--yellow);
   }
 `;
 const styleEl = document.createElement("style");
@@ -60,258 +60,57 @@ document.head.appendChild(styleEl);
 // Restore dark mode before first paint
 if (localStorage.getItem("fittrackr-dark") === "1") document.body.classList.add("dark");
 
-const MUSCLE_GROUPS = ["Abductors","Adductors","Back","Biceps","Calves","Cardio","Chest","Core","Glutes","Hamstrings","Quads","Shoulders","Traps","Triceps","Other"];
+import { EXERCISE_LIBRARY, EXERCISE_MAP, MUSCLE_GROUPS } from "./exerciseLibrary";
+import { DEFAULT_WORKOUT_TYPES, WORKOUT_TYPE_ALIASES, BIAS_WORKOUT_TYPE_MAP, resolveWorkoutType } from "./workoutTypes";
 
+const HI_THRESHOLD = 0.75;
 
-const EXERCISE_LIBRARY = [
-  {"name": "Arnold Press (Dumbbell)", "muscleGroup": "Shoulders"},
-  {"name": "Back Extension", "muscleGroup": "Back"},
-  {"name": "Backwards Walking", "muscleGroup": "Cardio"},
-  {"name": "Balance - Clock Touches", "muscleGroup": "Cardio"},
-  {"name": "Banded Bench Press (Speed)", "muscleGroup": "Chest"},
-  {"name": "Banded Jumps", "muscleGroup": "Cardio"},
-  {"name": "Banded Speed Bench", "muscleGroup": "Chest"},
-  {"name": "Barbell Overhead Marches", "muscleGroup": "Cardio"},
-  {"name": "Barbell Shrugs Wide Grip", "muscleGroup": "Traps"},
-  {"name": "Barbell split squat", "muscleGroup": "Quads"},
-  {"name": "Belt Cable Sissy Squat (Home)", "muscleGroup": "Quads"},
-  {"name": "Belt Landmine Squat", "muscleGroup": "Quads"},
-  {"name": "Bench Press (Barbell)", "muscleGroup": "Chest"},
-  {"name": "Bench Press (Dumbbell Partials)", "muscleGroup": "Chest"},
-  {"name": "Bench Press (Dumbbell)", "muscleGroup": "Chest"},
-  {"name": "Bent Over One Arm Row (Dumbbell)", "muscleGroup": "Back"},
-  {"name": "Bent Over Row (Barbell)", "muscleGroup": "Back"},
-  {"name": "Bent Over Row (Dumbbell)", "muscleGroup": "Back"},
-  {"name": "Bicep Curl (Barbell)", "muscleGroup": "Biceps"},
-  {"name": "Bicep Curl (Cable)", "muscleGroup": "Biceps"},
-  {"name": "Bicep Curl (Dumbbell)", "muscleGroup": "Biceps"},
-  {"name": "Bicep Curl (Machine)", "muscleGroup": "Biceps"},
-  {"name": "Box Jump", "muscleGroup": "Cardio"},
-  {"name": "Box Squat (Barbell)", "muscleGroup": "Quads"},
-  {"name": "Box Step Up", "muscleGroup": "Quads"},
-  {"name": "Bulgarian Split Squat", "muscleGroup": "Quads"},
-  {"name": "Burpee", "muscleGroup": "Cardio"},
-  {"name": "Cable Adductor", "muscleGroup": "Glutes"},
-  {"name": "Cable Chop (Upper)", "muscleGroup": "Core"},
-  {"name": "Cable Crossbody Lateral Raise", "muscleGroup": "Shoulders"},
-  {"name": "Cable Crossover", "muscleGroup": "Chest"},
-  {"name": "Cable Crunch", "muscleGroup": "Core"},
-  {"name": "Cable Hip Thrusts (Home)", "muscleGroup": "Glutes"},
-  {"name": "Calf Press on Leg Press", "muscleGroup": "Calves"},
-  {"name": "Calf Press on Seated Leg Press", "muscleGroup": "Calves"},
-  {"name": "Chest Dip", "muscleGroup": "Chest"},
-  {"name": "Chest Dip (Assisted)", "muscleGroup": "Chest"},
-  {"name": "Chest Fly (Dumbbell)", "muscleGroup": "Chest"},
-  {"name": "Chest Press (Machine)", "muscleGroup": "Chest"},
-  {"name": "Clamshell oblique raises", "muscleGroup": "Glutes"},
-  {"name": "Clean (Barbell)", "muscleGroup": "Shoulders"},
-  {"name": "Cobra Pulls", "muscleGroup": "Back"},
-  {"name": "Concentration Curl (Dumbbell)", "muscleGroup": "Biceps"},
-  {"name": "Cossack Squat", "muscleGroup": "Quads"},
-  {"name": "Crunch (Machine)", "muscleGroup": "Core"},
-  {"name": "Cycling (Indoor)", "muscleGroup": "Cardio"},
-  {"name": "DB Sumo Deadlift", "muscleGroup": "Hamstrings"},
-  {"name": "Dante Row", "muscleGroup": "Back"},
-  {"name": "Deadlift (Barbell)", "muscleGroup": "Glutes"},
-  {"name": "Deadlift (Dumbbell)", "muscleGroup": "Glutes"},
-  {"name": "Decline Crunch", "muscleGroup": "Core"},
-  {"name": "Decline Situp", "muscleGroup": "Core"},
-  {"name": "Deficit Barbell Row", "muscleGroup": "Back"},
-  {"name": "Deficit Pushup", "muscleGroup": "Chest"},
-  {"name": "Drop Steps (Plyos)", "muscleGroup": "Cardio"},
-  {"name": "Dumbbell Front Rack Marches", "muscleGroup": "Core"},
-  {"name": "Dumbbell Overhead Marches", "muscleGroup": "Core"},
-  {"name": "Dumbbell RDL", "muscleGroup": "Hamstrings"},
-  {"name": "EZ Bar Curls", "muscleGroup": "Biceps"},
-  {"name": "Face Pull (Cable)", "muscleGroup": "Shoulders"},
-  {"name": "Farmer Carry", "muscleGroup": "Core"},
-  {"name": "Forearm - Hammer", "muscleGroup": "Biceps"},
-  {"name": "Forearm DB Curl", "muscleGroup": "Biceps"},
-  {"name": "Freemotion - Narrow Stance Squats", "muscleGroup": "Quads"},
-  {"name": "Freemotion Cable Curls", "muscleGroup": "Biceps"},
-  {"name": "Freemotion Cable Lateral Raises", "muscleGroup": "Shoulders"},
-  {"name": "Freemotion Iso Lat Pulldowns", "muscleGroup": "Back"},
-  {"name": "Freemotion Lat Prayers", "muscleGroup": "Back"},
-  {"name": "Freemotion Lunge", "muscleGroup": "Quads"},
-  {"name": "Freemotion Squat Machine", "muscleGroup": "Quads"},
-  {"name": "Freemotion Squat Partial Reps", "muscleGroup": "Quads"},
-  {"name": "Full ROM Lateral Raises", "muscleGroup": "Shoulders"},
-  {"name": "Glute Bridge", "muscleGroup": "Glutes"},
-  {"name": "Glute Kickback (Machine)", "muscleGroup": "Glutes"},
-  {"name": "Goblet Squat (Kettlebell)", "muscleGroup": "Quads"},
-  {"name": "Good morning dumbbell", "muscleGroup": "Back"},
-  {"name": "Hack Squat", "muscleGroup": "Quads"},
-  {"name": "Hack Squat (Barbell)", "muscleGroup": "Quads"},
-  {"name": "Hammer Curl (Dumbbell)", "muscleGroup": "Biceps"},
-  {"name": "Hammer Strength Lat Row", "muscleGroup": "Back"},
-  {"name": "Hang Clean (Barbell)", "muscleGroup": "Shoulders"},
-  {"name": "Hang Power Clean", "muscleGroup": "Shoulders"},
-  {"name": "Hanging Knee Raise", "muscleGroup": "Core"},
-  {"name": "Hanging Leg Raise", "muscleGroup": "Core"},
-  {"name": "Hip Abductor (Machine)", "muscleGroup": "Abductors"},
-  {"name": "Hip Adductor (Machine)", "muscleGroup": "Adductors"},
-  {"name": "Hip Thrust (Barbell)", "muscleGroup": "Glutes"},
-  {"name": "Incline Barbell Press (Narrow Grip)", "muscleGroup": "Chest"},
-  {"name": "Incline Bench Press (Barbell)", "muscleGroup": "Chest"},
-  {"name": "Incline Bench Press (Dumbbell)", "muscleGroup": "Chest"},
-  {"name": "Incline Bench Press (Smith Machine)", "muscleGroup": "Chest"},
-  {"name": "Incline Chest Fly (Dumbbell)", "muscleGroup": "Chest"},
-  {"name": "Incline Curl (Dumbbell)", "muscleGroup": "Biceps"},
-  {"name": "Incline Row (Barbell)", "muscleGroup": "Back"},
-  {"name": "Incline Row (Cable Home)", "muscleGroup": "Back"},
-  {"name": "Incline Row (Dumbbell)", "muscleGroup": "Back"},
-  {"name": "Iso-Lateral Row (Machine)", "muscleGroup": "Back"},
-  {"name": "Kettlebell Swing", "muscleGroup": "Cardio"},
-  {"name": "Kickstand RDL", "muscleGroup": "Hamstrings"},
-  {"name": "Knee Raise (Captain's Chair)", "muscleGroup": "Core"},
-  {"name": "Kneeling Plate Rotation", "muscleGroup": "Core"},
-  {"name": "Landmine Front Squat", "muscleGroup": "Quads"},
-  {"name": "Lat Prayer", "muscleGroup": "Back"},
-  {"name": "Lat Pulldown (Cable)", "muscleGroup": "Back"},
-  {"name": "Lat Pulldown (Single Arm)", "muscleGroup": "Back"},
-  {"name": "Lat Pulldown - Underhand (Cable)", "muscleGroup": "Back"},
-  {"name": "Lat Pulldown Neutral Grip", "muscleGroup": "Back"},
-  {"name": "Lat Pulldowns (Narrow Grip)", "muscleGroup": "Back"},
-  {"name": "Lateral Raise (Cable)", "muscleGroup": "Shoulders"},
-  {"name": "Lateral Raise (Dumbbell)", "muscleGroup": "Shoulders"},
-  {"name": "Lateral Side Jumps", "muscleGroup": "Cardio"},
-  {"name": "Lateral Single Leg Pogo Hops", "muscleGroup": "Cardio"},
-  {"name": "Leg Extension (Machine)", "muscleGroup": "Quads"},
-  {"name": "Leg Extension Partials", "muscleGroup": "Quads"},
-  {"name": "Leg Extensions (Home)", "muscleGroup": "Quads"},
-  {"name": "Leg Press", "muscleGroup": "Quads"},
-  {"name": "Leg Press - Single Leg", "muscleGroup": "Quads"},
-  {"name": "Leg Press Partials", "muscleGroup": "Quads"},
-  {"name": "Long Jump", "muscleGroup": "Cardio"},
-  {"name": "Low Row Narrow Grip", "muscleGroup": "Back"},
-  {"name": "Lunge (Barbell)", "muscleGroup": "Quads"},
-  {"name": "Lunge (Bodyweight)", "muscleGroup": "Quads"},
-  {"name": "Lunge (Dumbbell)", "muscleGroup": "Quads"},
-  {"name": "Lying Leg Crunches", "muscleGroup": "Core"},
-  {"name": "Lying Leg Curl (Machine)", "muscleGroup": "Hamstrings"},
-  {"name": "Meadows Row", "muscleGroup": "Back"},
-  {"name": "Medball Core Rolls", "muscleGroup": "Core"},
-  {"name": "Nordic Hamstring Curl", "muscleGroup": "Hamstrings"},
-  {"name": "Overhead Press (Barbell)", "muscleGroup": "Shoulders"},
-  {"name": "Overhead Press (Dumbbell)", "muscleGroup": "Shoulders"},
-  {"name": "Palloff Press", "muscleGroup": "Core"},
-  {"name": "Pec Deck (Machine)", "muscleGroup": "Chest"},
-  {"name": "Pec Deck - Shortened Crossbody", "muscleGroup": "Chest"},
-  {"name": "Pendlay Row (Barbell)", "muscleGroup": "Back"},
-  {"name": "Pendulum Squat (Home)", "muscleGroup": "Quads"},
-  {"name": "Pin Press Bench", "muscleGroup": "Chest"},
-  {"name": "Plyo - Box Jump Height", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Box Push Off", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Depth Jumps", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Four Square Hops", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Kneeling Wall Slams", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Landmine Presses", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Pogo Hops", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Rotational Wall Slams", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Single Leg Drop", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Single Leg Jump To Height", "muscleGroup": "Cardio"},
-  {"name": "Plyo - Single Leg Line Hop", "muscleGroup": "Cardio"},
-  {"name": "Plyo Box Jump To Step Off", "muscleGroup": "Cardio"},
-  {"name": "Plyo Chest Falls", "muscleGroup": "Chest"},
-  {"name": "Plyo Clapping Pushups", "muscleGroup": "Chest"},
-  {"name": "Plyo Push Up To Plates", "muscleGroup": "Chest"},
-  {"name": "Plyos - Lateral Jumps", "muscleGroup": "Cardio"},
-  {"name": "Pogo hops", "muscleGroup": "Cardio"},
-  {"name": "Power Clean", "muscleGroup": "Shoulders"},
-  {"name": "Power Snatch (Barbell)", "muscleGroup": "Shoulders"},
-  {"name": "Preacher Curl (Barbell)", "muscleGroup": "Biceps"},
-  {"name": "Preacher Curl (Dumbbell)", "muscleGroup": "Biceps"},
-  {"name": "Preacher Curl Cable", "muscleGroup": "Biceps"},
-  {"name": "Pronated Forearm Curls", "muscleGroup": "Biceps"},
-  {"name": "Pull Up", "muscleGroup": "Back"},
-  {"name": "Pull Up (Assisted)", "muscleGroup": "Back"},
-  {"name": "Pull Up (Band)", "muscleGroup": "Back"},
-  {"name": "Pullover (Dumbbell)", "muscleGroup": "Back"},
-  {"name": "Push Up", "muscleGroup": "Chest"},
-  {"name": "Rack Pull (Barbell)", "muscleGroup": "Back"},
-  {"name": "Reverse Fly (Cable)", "muscleGroup": "Back"},
-  {"name": "Reverse Fly (Dumbbell)", "muscleGroup": "Back"},
-  {"name": "Reverse Fly (Machine)", "muscleGroup": "Back"},
-  {"name": "Reverse Flye Machine Single Arm", "muscleGroup": "Back"},
-  {"name": "Reverse Nordic Curl", "muscleGroup": "Quads"},
-  {"name": "Ring Pushup", "muscleGroup": "Chest"},
-  {"name": "Romanian Deadlift (Barbell)", "muscleGroup": "Back"},
-  {"name": "Romanian Deadlift (Dumbbell)", "muscleGroup": "Back"},
-  {"name": "Rotational Kickstand Deadlift", "muscleGroup": "Hamstrings"},
-  {"name": "Rowing (Machine)", "muscleGroup": "Cardio"},
-  {"name": "Running", "muscleGroup": "Cardio"},
-  {"name": "Running (Treadmill)", "muscleGroup": "Cardio"},
-  {"name": "Safety Squats", "muscleGroup": "Quads"},
-  {"name": "Seal Row - Dumbbell", "muscleGroup": "Back"},
-  {"name": "Seated Cable Row (Home)", "muscleGroup": "Back"},
-  {"name": "Seated Calf Press (Home)", "muscleGroup": "Calves"},
-  {"name": "Seated Calf Raise (Machine)", "muscleGroup": "Calves"},
-  {"name": "Seated Calf Raise (Plate Loaded)", "muscleGroup": "Calves"},
-  {"name": "Seated Dumbbell Lateral Raise", "muscleGroup": "Shoulders"},
-  {"name": "Seated Dumbbell Shrugs", "muscleGroup": "Shoulders"},
-  {"name": "Seated Hammer Curls", "muscleGroup": "Biceps"},
-  {"name": "Seated Leg Curl (Machine)", "muscleGroup": "Hamstrings"},
-  {"name": "Seated Leg Press (Machine)", "muscleGroup": "Hamstrings"},
-  {"name": "Seated One Arm Cable Row", "muscleGroup": "Back"},
-  {"name": "Seated Overhead Press Machine", "muscleGroup": "Shoulders"},
-  {"name": "Seated Row (Cable)", "muscleGroup": "Back"},
-  {"name": "Seated Row (Machine)", "muscleGroup": "Back"},
-  {"name": "Seated Single Arm Low.Row", "muscleGroup": "Back"},
-  {"name": "Shoulder Press (Machine)", "muscleGroup": "Shoulders"},
-  {"name": "Shoulder Wall Stands", "muscleGroup": "Shoulders"},
-  {"name": "Shrug (Barbell)", "muscleGroup": "Traps"},
-  {"name": "Shrug (Dumbbell)", "muscleGroup": "Traps"},
-  {"name": "Shrug (Machine)", "muscleGroup": "Traps"},
-  {"name": "Side Plank", "muscleGroup": "Core"},
-  {"name": "Single Leg Bridge", "muscleGroup": "Glutes"},
-  {"name": "Single Leg Cable Kickback (Home)", "muscleGroup": "Glutes"},
-  {"name": "Single Leg Extension (Home)", "muscleGroup": "Core"},
-  {"name": "Single Leg Glute Bridge", "muscleGroup": "Glutes"},
-  {"name": "Single Leg Medial Glute Lateral Raise", "muscleGroup": "Glutes"},
-  {"name": "Single Leg RDL", "muscleGroup": "Hamstrings"},
-  {"name": "Single kettlebell deadlift", "muscleGroup": "Hamstrings"},
-  {"name": "Sissy Squat", "muscleGroup": "Quads"},
-  {"name": "Sit Up", "muscleGroup": "Core"},
-  {"name": "Skullcrusher (Barbell)", "muscleGroup": "Triceps"},
-  {"name": "Skullcrusher (Dumbbell)", "muscleGroup": "Triceps"},
-  {"name": "Sled Push", "muscleGroup": "Cardio"},
-  {"name": "Smith Machine Hack Squat", "muscleGroup": "Quads"},
-  {"name": "Smith Machine Shrugs", "muscleGroup": "Traps"},
-  {"name": "Smith Machine Standing Calf Raises", "muscleGroup": "Calves"},
-  {"name": "Snap Drop to Box Jump", "muscleGroup": "Cardio"},
-  {"name": "Snatch Grip Barbell Shrugs", "muscleGroup": "Traps"},
-  {"name": "Speed Bench Press", "muscleGroup": "Chest"},
-  {"name": "Split Squat - Dumbbell", "muscleGroup": "Quads"},
-  {"name": "Squat (Barbell)", "muscleGroup": "Quads"},
-  {"name": "Squat (Bodyweight)", "muscleGroup": "Quads"},
-  {"name": "Squat (Smith Machine)", "muscleGroup": "Quads"},
-  {"name": "Stairmaster", "muscleGroup": "Cardio"},
-  {"name": "Standing Calf Press - Single Leg", "muscleGroup": "Calves"},
-  {"name": "Standing Calf Press Freemotion", "muscleGroup": "Calves"},
-  {"name": "Standing Calf Raise (Barbell)", "muscleGroup": "Calves"},
-  {"name": "Standing Calf Raise (Bodyweight)", "muscleGroup": "Calves"},
-  {"name": "Standing Calf Raise (Dumbbell)", "muscleGroup": "Calves"},
-  {"name": "Standing Forearm Barbell Curls", "muscleGroup": "Biceps"},
-  {"name": "Standing Jumps (Plyos)", "muscleGroup": "Cardio"},
-  {"name": "Standing Single Leg Curl", "muscleGroup": "Hamstrings"},
-  {"name": "Strict Lateral Raise", "muscleGroup": "Shoulders"},
-  {"name": "Suitcase Carry", "muscleGroup": "Core"},
-  {"name": "Suitcase Deadlift", "muscleGroup": "Quads"},
-  {"name": "Suitcase Marches", "muscleGroup": "Core"},
-  {"name": "T Bar Row", "muscleGroup": "Back"},
-  {"name": "Toes To Bar", "muscleGroup": "Core"},
-  {"name": "Trap Bar Deadlift", "muscleGroup": "Glutes"},
-  {"name": "Tricep Extension - Crossboy", "muscleGroup": "Triceps"},
-  {"name": "Tricep Extension Standard", "muscleGroup": "Triceps"},
-  {"name": "Tricep Extension Standing", "muscleGroup": "Triceps"},
-  {"name": "Tricep Pushdowns - Banded", "muscleGroup": "Triceps"},
-  {"name": "Tricep pushdowns - Rope", "muscleGroup": "Triceps"},
-  {"name": "Triceps Extension (Cable)", "muscleGroup": "Triceps"},
-  {"name": "Triceps Pushdown (Cable - Straight Bar)", "muscleGroup": "Triceps"},
-  {"name": "Walking", "muscleGroup": "Cardio"},
-  {"name": "Weighted Jumps", "muscleGroup": "Cardio"},
-];
+// Partial reps count as half a rep each, at full weight.
+function partialCount(s) { return Math.max(0, Math.round(parseFloat(s?.partials) || 0)); }
+function effectiveReps(s) { return (Math.round(parseFloat(s?.reps) || 0)) + partialCount(s) * 0.5; }
 
+// Shared hi-intensity volume calculation used by session stats, deload detection, readiness, and analytics
+function computeSetVolumes(sets) {
+  let totalVol = 0, hiVol = 0;
+  for (const s of (sets || [])) {
+    const reps = Math.round(parseFloat(s.reps) || 0);
+    const partials = partialCount(s);
+    const weight = parseFloat(s.weight) || 0;
+    totalVol += (reps + partials * 0.5) * weight;
+    if (weight > 0 && reps > 0) {
+      const rir = (s.rir !== "" && s.rir !== null && s.rir !== undefined) ? parseFloat(s.rir) : 4;
+      for (let n = 1; n <= reps; n++) {
+        const rr = (reps - n) + rir;
+        const e1rm = weight * (1 + rr / 30);
+        if (weight / e1rm >= HI_THRESHOLD) hiVol += weight;
+      }
+    }
+    // Partials happen past the point of full-ROM failure, so they always
+    // qualify as high-intensity work — half a rep each, at full weight.
+    if (weight > 0 && partials > 0) hiVol += partials * 0.5 * weight;
+  }
+  return { totalVol, hiVol };
+}
+
+const VOLUME_LANDMARKS = {
+  Chest:      { mev: 10, mav: 16, mrv: 22 },
+  Back:       { mev: 10, mav: 16, mrv: 25 },
+  Shoulders:  { mev: 8,  mav: 14, mrv: 20 },
+  Triceps:    { mev: 6,  mav: 12, mrv: 18 },
+  Biceps:     { mev: 6,  mav: 12, mrv: 18 },
+  Traps:      { mev: 6,  mav: 10, mrv: 16 },
+  Core:       { mev: 6,  mav: 10, mrv: 16 },
+  Quads:      { mev: 8,  mav: 14, mrv: 20 },
+  Hamstrings: { mev: 6,  mav: 12, mrv: 18 },
+  Glutes:     { mev: 6,  mav: 12, mrv: 18 },
+  Calves:     { mev: 6,  mav: 10, mrv: 16 },
+  Abductors:  { mev: 4,  mav: 8,  mrv: 12 },
+  Adductors:  { mev: 4,  mav: 8,  mrv: 12 },
+};
+
+const MUSCLE_GROUP_MAPPINGS = Object.fromEntries(
+  EXERCISE_LIBRARY.map(e => [e.name, { primaryGroup: e.primaryGroup, secondaryGroups: e.secondaryGroups }])
+);
 
 const REST_OPTIONS = Array.from({ length: 10 }, (_, i) => {
   const secs = (i + 1) * 30;
@@ -347,60 +146,122 @@ function formatTime(seconds) {
 }
 function today() { return new Date().toISOString().split("T")[0]; }
 
-const HI_THRESHOLD = 0.75;
+const APP_VERSION = "1.1";
+const GITHUB_REPO = "tlayman2-del/fittrackr";
 
 function computeSessionStats(exercises) {
-  let totalVolume = 0;
-  let hiVolume = 0;
+  let totalVolume = 0, hiVolume = 0;
   for (const ex of exercises) {
     if (!ex.name) continue;
-    const validSets = (ex.sets || []).filter(s => s.reps && s.reps !== "0" && s.weight);
-    for (const s of validSets) {
-      const reps = Math.round(parseFloat(s.reps) || 0);
-      const weight = parseFloat(s.weight) || 0;
-      const rir = (s.rir !== "" && s.rir !== null && s.rir !== undefined) ? parseFloat(s.rir) : 4;
-      const setVol = reps * weight;
-      totalVolume += setVol;
-      if (weight > 0 && reps > 0) {
-        for (let n = 1; n <= reps; n++) {
-          const repsRemaining = (reps - n) + rir;
-          const e1rm = weight * (1 + repsRemaining / 30);
-          if (weight / e1rm >= HI_THRESHOLD) hiVolume += weight;
-        }
-      }
-    }
+    const validSets = (ex.sets || []).filter(s => effectiveReps(s) > 0 && s.weight);
+    const { totalVol, hiVol } = computeSetVolumes(validSets);
+    totalVolume += totalVol;
+    hiVolume += hiVol;
   }
   const hiPct = totalVolume > 0 ? Math.round((hiVolume / totalVolume) * 100) : 0;
   return { totalVolume: Math.round(totalVolume), hiPct };
 }
 
 function computeDeloadScore(recentWorkouts) {
-  // recentWorkouts: array of {sleepQuality, energyLevel, postRating, hiPct}
+  // recentWorkouts: array of {sleepQuality, energyLevel, postRating, hiPct, date}
   // Returns { score, sleepScore, energyScore, sessionScore, hiPctScore, count }
   const valid = recentWorkouts.filter(w =>
     w.sleepQuality != null && w.energyLevel != null &&
     w.postRating != null && w.hiPct != null
   );
   if (valid.length < 3) return null;
-  const last3 = valid.slice(-3);
-  const avg = key => last3.reduce((s, w) => s + w[key], 0) / last3.length;
-  const clamp = v => Math.max(0, Math.min(1, v));
-  const sleepScore   = clamp((3 - avg("sleepQuality")) / 2);
-  const energyScore  = clamp((3 - avg("energyLevel"))  / 2);
-  const sessionScore = clamp((3 - avg("postRating"))   / 2);
-  const hiPctScore   = clamp((avg("hiPct") - 50) / 50);
-  const score = 0.30 * sleepScore + 0.20 * energyScore + 0.25 * sessionScore + 0.25 * hiPctScore;
-  return { score, sleepScore, energyScore, sessionScore, hiPctScore, count: last3.length };
+
+  const clamp = v => Math.max(-1, Math.min(1, v)); // allow negative for sleep
+  const clamp0 = v => Math.max(0, Math.min(1, v)); // one-directional clamp
+
+  // Recency weighting: last 5 days = 60% weight, days 6-14 = 40% weight
+  const now = Date.now();
+  const fiveDaysMs = 5 * 86400000;
+  const recentSessions = valid.filter(w => (now - new Date(w.date + "T00:00:00").getTime()) <= fiveDaysMs);
+  const olderSessions  = valid.filter(w => (now - new Date(w.date + "T00:00:00").getTime()) >  fiveDaysMs);
+
+  function weightedAvg(key, isSession = false) {
+    function sessionWeightedMean(sessions) {
+      if (!sessions.length) return null;
+      let weightedSum = 0, totalWeight = 0;
+      for (const w of sessions) {
+        // Poor session ratings (1-2) count at 2x weight
+        const weight = isSession && w[key] <= 2 ? 2 : 1;
+        weightedSum += w[key] * weight;
+        totalWeight += weight;
+      }
+      return weightedSum / totalWeight;
+    }
+    const recentAvg = sessionWeightedMean(recentSessions);
+    const olderAvg  = sessionWeightedMean(olderSessions);
+    if (recentAvg === null && olderAvg === null) return null;
+    if (recentAvg === null) return olderAvg;
+    if (olderAvg  === null) return recentAvg;
+    return recentAvg * 0.6 + olderAvg * 0.4;
+  }
+
+  const avgSleep   = weightedAvg("sleepQuality");
+  const avgEnergy  = weightedAvg("energyLevel");
+  const avgSession = weightedAvg("postRating", true);
+  const avgHiPct   = weightedAvg("hiPct");
+
+  if (avgSleep == null || avgEnergy == null || avgSession == null || avgHiPct == null) return null;
+
+  // Sleep: bidirectional — 3=neutral(0), 1=+1 fatigue, 5=-1 fatigue
+  const sleepScore   = clamp((3 - avgSleep) / 2);
+  // Energy: one-directional — low hurts, 3+ contributes 0
+  const energyScore  = clamp0((3 - avgEnergy) / 2);
+  // Session: one-directional with 2x weight on poor sessions already in avg
+  const sessionScore = clamp0((3 - avgSession) / 2);
+
+  // Slope penalty: compare recent 3 sessions vs sessions 4-7 baseline
+  // If declining, add penalty on top of session score
+  let slopePenalty = 0;
+  const sortedValid = [...valid].sort((a, b) => (b.date || '') < (a.date || '') ? -1 : 1); // newest first
+  if (sortedValid.length >= 4) {
+    const recent3 = sortedValid.slice(0, 3);
+    const baseline = sortedValid.slice(3, 7);
+    const recentAvgRating = recent3.reduce((s, w) => s + w.postRating, 0) / recent3.length;
+    const baselineAvgRating = baseline.reduce((s, w) => s + w.postRating, 0) / baseline.length;
+    if (recentAvgRating < baselineAvgRating) {
+      slopePenalty = clamp0((baselineAvgRating - recentAvgRating) / 4);
+    }
+  }
+  const sessionScoreFinal = clamp0(sessionScore + slopePenalty);
+  // hi%: above 40% starts contributing
+  const hiPctScore   = clamp0((avgHiPct - 40) / 60);
+
+  const score = 0.30 * sleepScore + 0.10 * energyScore + 0.35 * sessionScoreFinal + 0.25 * hiPctScore;
+  return { score, sleepScore, energyScore, sessionScore: sessionScoreFinal, hiPctScore, slopePenalty, count: valid.length };
 }
+
+// ── Fractional Set Calculator ─────────────────────────────────────────────────
+// Computes primary and secondary set credits for a single exercise.
+// Returns { primaryGroup, primarySets, secondarySets }
+function computeFractionalSets(exerciseName, muscleGroup, sets) {
+  const workingSets = (sets || []).filter(s => (s.reps && s.reps !== "0") || partialCount(s) > 0 || s.weight || s.duration || s.distance).length;
+  const entry = EXERCISE_MAP[exerciseName];
+  const primaryGroup = entry ? entry.primaryGroup : (muscleGroup || null);
+  const secondarySets = {};
+  if (entry && entry.secondaryGroups && workingSets > 0) {
+    for (const [group, fraction] of Object.entries(entry.secondaryGroups)) {
+      const credit = Math.round(workingSets * fraction * 10) / 10;
+      if (credit > 0) secondarySets[group] = credit;
+    }
+  }
+  return { primaryGroup, primarySets: workingSets, secondarySets };
+}
+
+
 
 
 const inputStyle = {
   width: "100%", padding: "9px 11px", background: "var(--card)",
-  border: "1.5px solid var(--border)", borderRadius: 3,
+  border: "1.5px solid var(--border)", borderRadius: 0,
   color: "var(--ink)", fontSize: 15, fontFamily: "var(--font-body)",
   outline: "none", transition: "border-color 0.15s", WebkitAppearance: "none",
 };
-const inputFocusStyle = { borderColor: "var(--orange)" };
+const inputFocusStyle = { borderColor: "var(--yellow)" };
 const labelStyle = {
   fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", color: "var(--ink3)",
   textTransform: "uppercase", marginBottom: 5, display: "block", fontFamily: "var(--font-label)",
@@ -410,24 +271,18 @@ const sectionLabelStyle = {
   textTransform: "uppercase", fontFamily: "var(--font-label)",
 };
 const btnStyle = (variant = "default") => ({
-  padding: "10px 18px", borderRadius: 3, cursor: "pointer", fontSize: 13, fontWeight: 700,
-  fontFamily: "var(--font-label)", letterSpacing: "0.08em", textTransform: "uppercase",
+  padding: "10px 18px", borderRadius: 0, cursor: "pointer", fontSize: 13, fontWeight: 700,
+  fontFamily: "var(--font-label)", letterSpacing: "0.10em", textTransform: "uppercase",
   transition: "all 0.15s", border: "none",
-  ...(variant === "primary" ? { background: "var(--orange)", color: "var(--card)", boxShadow: "0 2px 0 var(--red)" }
-    : variant === "danger" ? { background: "var(--red)", color: "var(--card)", boxShadow: "0 2px 0 #7a1010" }
+  ...(variant === "primary" ? { background: "var(--yellow)", color: "var(--black)" }
+    : variant === "danger" ? { background: "var(--red)", color: "#EDE8DF", boxShadow: "0 2px 0 #7a1010" }
     : variant === "ghost" ? { background: "transparent", color: "var(--ink2)", border: "1.5px solid var(--border)" }
-    : variant === "active" ? { background: "var(--orange)", color: "#fff" }
+    : variant === "active" ? { background: "var(--yellow)", color: "var(--black)" }
     : { background: "var(--cream2)", color: "var(--ink)", border: "1.5px solid var(--border)" })
 });
 
 function StripeBar({ height = 6 }) {
-  return (
-    <div style={{ display: "flex", height, width: "100%" }}>
-      <div style={{ flex: 3, background: "var(--orange)" }} />
-      <div style={{ flex: 1, background: "var(--black)" }} />
-      <div style={{ flex: 2, background: "var(--pink)" }} />
-    </div>
-  );
+  return <div style={{ height: 2.5, width: "100%", background: "var(--ink)" }} />;
 }
 
 function FocusInput({ style, ...props }) {
@@ -465,7 +320,7 @@ function ComboBox({ value, onChange, onCommit, onSelect, options, placeholder })
         onKeyDown={handleKeyDown} onBlur={handleBlur} placeholder={placeholder}
         style={{ ...inputStyle, ...(focused ? inputFocusStyle : {}) }} />
       {open && filtered.length > 0 && (
-        <div style={{ position: "absolute", top: "calc(100% + 3px)", left: 0, right: 0, background: "var(--card)", border: "1.5px solid var(--orange)", borderRadius: 3, zIndex: 500, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.12)" }}>
+        <div style={{ position: "absolute", top: "calc(100% + 3px)", left: 0, right: 0, background: "var(--card)", border: "1.5px solid var(--yellow)", borderRadius: 0, zIndex: 500, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.12)" }}>
           {filtered.map(opt => (
             <div key={opt} onMouseDown={() => handleSelect(opt)}
               style={{ padding: "10px 12px", cursor: "pointer", fontSize: 14, borderBottom: "1px solid var(--cream2)", fontFamily: "var(--font-body)", color: "var(--ink)" }}
@@ -602,7 +457,7 @@ function TemplateSelector({ templates, onSelect, onSkip, onDelete }) {
                       {ex.muscleGroup && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", textTransform: "uppercase" }}>{ex.muscleGroup}</span>}
                     </div>
                     <div style={{ fontSize: 13, color: "var(--ink3)", fontFamily: "var(--font-label)" }}>
-                      {ex.sets.length} set{ex.sets.length !== 1 ? "s" : ""} · {ex.sets.map(s => `${s.weight}lb × ${s.reps}`).join(", ")}
+                      {ex.sets.length} set{ex.sets.length !== 1 ? "s" : ""} · {ex.sets.map(s => `${s.weight}lb × ${formatReps(s)}`).join(", ")}
                     </div>
                   </div>
                 ))}
@@ -630,26 +485,29 @@ function SignIn() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32 }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0 }}><StripeBar height={10} /></div>
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 14, display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, background: "var(--orange)" }} />
-        <div style={{ flex: 0.15, background: "var(--black)" }} />
-        <div style={{ flex: 0.6, background: "var(--pink)" }} />
-      </div>
+      {/* Left yellow signal bar */}
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: "var(--yellow)" }} />
       <div style={{ textAlign: "center", maxWidth: 320, width: "100%" }}>
-        <div style={{ fontSize: 72, lineHeight: 1, marginBottom: 8 }}>🏋️</div>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 64, lineHeight: 0.9, color: "var(--orange)", letterSpacing: "0.03em", marginBottom: 24, textShadow: "3px 3px 0 var(--red)" }}>FITTRACKR</h1>
-        <p style={{ color: "var(--ink3)", marginBottom: 40, fontSize: 14, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-label)" }}>Track every rep. Own your progress.</p>
-        <button onClick={handleGoogle} disabled={loading} style={{ ...btnStyle("primary"), width: "100%", padding: "14px 24px", fontSize: 15, display: "flex", alignItems: "center", gap: 10, justifyContent: "center", boxShadow: "0 3px 0 var(--red)" }}>
+        {/* Moholy-Nagy circle as hero */}
+        <div style={{ position: "relative", width: 100, height: 100, margin: "0 auto 20px" }}>
+          <div style={{ position: "absolute", width: 100, height: 100, border: "2.5px solid var(--ink)", borderRadius: "50%" }} />
+          <div style={{ position: "absolute", width: 66, height: 66, top: 17, left: 17, background: "var(--yellow)", borderRadius: "50%" }} />
+          <div style={{ position: "absolute", width: 33, height: 33, top: 33.5, left: 33.5, background: "var(--ink)", borderRadius: "50%" }} />
+          <div style={{ position: "absolute", width: 10, height: 10, top: 45, left: 45, background: "var(--yellow)", borderRadius: "50%" }} />
+        </div>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 64, lineHeight: 0.85, color: "var(--ink)", letterSpacing: "0.04em", marginBottom: 16 }}>FIT<br/>TRACKR</h1>
+        <p style={{ color: "var(--ink3)", marginBottom: 40, fontSize: 9, fontWeight: 300, letterSpacing: "0.22em", textTransform: "uppercase", fontFamily: "var(--font-label)" }}>Track every rep. Own your progress.</p>
+        <button onClick={handleGoogle} disabled={loading} style={{ ...btnStyle("primary"), width: "100%", padding: "14px 24px", fontSize: 15, display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24">
-            <path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-            <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            <path fill="#1C1C1C" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#1C1C1C" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#1C1C1C" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#1C1C1C" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
           {loading ? "Signing in…" : "Continue with Google"}
         </button>
       </div>
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0 }}><StripeBar height={8} /></div>
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2.5, background: "var(--ink)" }} />
     </div>
   );
 }
@@ -694,13 +552,16 @@ function ExerciseHistoryPanel({ exerciseName, uid, onClose }) {
             : history.length === 0 ? <p style={{ color: "var(--ink3)", textAlign: "center", padding: 24 }}>No history yet</p>
             : history.map((entry, i) => (
               <div key={i} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: i < history.length - 1 ? "1.5px solid var(--cream3)" : "none" }}>
-                <div style={{ ...sectionLabelStyle, fontSize: 11, color: "var(--orange)", marginBottom: 8 }}>{entry.date}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                  <div style={{ ...sectionLabelStyle, fontSize: 11, color: "var(--orange)" }}>{entry.date}</div>
+                  {entry.order && <div style={{ fontSize: 10, color: "var(--ink4)", fontFamily: "var(--font-label)", letterSpacing: "0.06em" }}>exercise #{entry.order}</div>}
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 2fr 2fr", gap: 4 }}>
                   {["Set","Reps","Weight","RIR"].map(h => <div key={h} style={{ ...labelStyle, marginBottom: 2 }}>{h}</div>)}
                   {(entry.sets || []).map((set, j) => (
                     <>
                       <div key={`s${j}`} style={{ fontSize: 15, fontWeight: 600 }}>{j + 1}</div>
-                      <div key={`r${j}`} style={{ fontSize: 15, fontWeight: 600 }}>{set.reps}</div>
+                      <div key={`r${j}`} style={{ fontSize: 15, fontWeight: 600 }}>{formatReps(set)}</div>
                       <div key={`w${j}`} style={{ fontSize: 15, fontWeight: 600 }}>{set.weight}<span style={{ fontSize: 11, color: "var(--ink4)" }}>lb</span></div>
                       <div key={`i${j}`} style={{ fontSize: 15, fontWeight: 600 }}>{set.rir ?? "—"}</div>
                     </>
@@ -719,17 +580,53 @@ function RestTimer({ restSecs, defaultRestSecs, onRestChange, onDone }) {
   const [remaining, setRemaining] = useState(restSecs);
   const [running, setRunning] = useState(true);
   const intervalRef = useRef(null);
-  useEffect(() => { setRemaining(restSecs); setRunning(true); }, [restSecs]);
+  const endTimeRef = useRef(null); // absolute end time for screen-timeout resilience
+  const doneRef = useRef(false);
+
+  function computeRemaining() {
+    if (!endTimeRef.current) return remaining;
+    return Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
+  }
+
+  function startTimer(fromRemaining) {
+    endTimeRef.current = Date.now() + fromRemaining * 1000;
+    doneRef.current = false;
+    clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      const r = computeRemaining();
+      setRemaining(r);
+      if (r <= 0 && !doneRef.current) {
+        doneRef.current = true;
+        clearInterval(intervalRef.current);
+        playBeep(); vibrate();
+        setTimeout(() => { if (onDone) onDone(); }, 2000);
+      }
+    }, 500); // 500ms poll for snappier UI
+  }
+
+  useEffect(() => { setRemaining(restSecs); startTimer(restSecs); return () => clearInterval(intervalRef.current); }, [restSecs]);
+
   useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => {
-        setRemaining(prev => {
-          if (prev <= 1) { clearInterval(intervalRef.current); setRunning(false); playBeep(); vibrate(); setTimeout(() => { if (onDone) onDone(); }, 2000); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
-    } else { clearInterval(intervalRef.current); }
+    if (!running) { clearInterval(intervalRef.current); return; }
+    startTimer(remaining);
     return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  // Resync when screen wakes up
+  useEffect(() => {
+    function onVisible() {
+      if (!running || doneRef.current) return;
+      const r = computeRemaining();
+      setRemaining(r);
+      if (r <= 0 && !doneRef.current) {
+        doneRef.current = true;
+        clearInterval(intervalRef.current);
+        playBeep(); vibrate();
+        setTimeout(() => { if (onDone) onDone(); }, 2000);
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [running]);
 
   const pct = restSecs > 0 ? remaining / restSecs : 0;
@@ -780,28 +677,82 @@ function RestTimer({ restSecs, defaultRestSecs, onRestChange, onDone }) {
 // ── Set Row ───────────────────────────────────────────────────────────────────
 const CARDIO_MUSCLE_GROUPS = new Set(["Cardio"]);
 
-function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange, isActiveRest, onActivate, onRestDone, isCardio, onInteract }) {
+// Set-row grid templates. The partials column is narrower than the rest —
+// it only ever holds a single digit or two.
+const SET_GRID = "22px 1fr 1fr 1fr 28px";
+const SET_GRID_PARTIALS = "22px 1fr 1fr 0.72fr 0.8fr 28px";
+
+// True if any set in the exercise has partials logged — used to decide whether
+// read-only views (history, templates) need to surface them.
+function anySetHasPartials(sets) { return (sets || []).some(s => partialCount(s) > 0); }
+
+// Drops UI-only keys and normalizes partials to a number (or omits the key
+// entirely) so blank strings never reach Firestore.
+function cleanSetForSave({ _prefilled, partials, ...s }) {
+  const p = Math.max(0, Math.round(parseFloat(partials) || 0));
+  return p > 0 ? { ...s, partials: p } : s;
+}
+
+// "8", "8+3p", or "3p" for a partials-only set.
+function formatReps(set) {
+  const reps = Math.round(parseFloat(set?.reps) || 0);
+  const p = partialCount(set);
+  if (!p) return set?.reps ? String(set.reps) : "";
+  return reps > 0 ? `${reps}+${p}p` : `${p}p`;
+}
+
+function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange, isActiveRest, onActivate, onRestDone, isCardio, onInteract, prWeightValue, showPartials }) {
   const fields = isCardio
     ? ["duration", "distance"]
-    : ["reps", "weight", "rir"];
+    : ["reps", "weight", "partials", "rir"];
   const [fieldState, setFieldState] = useState(
     Object.fromEntries(fields.map(k => [k, { focused: false, typed: false }]))
   );
+  const inputRefs = {
+    reps: useRef(null),
+    weight: useRef(null),
+    partials: useRef(null),
+    rir: useRef(null),
+  };
+  const rirFiredRef = useRef(false);  // prevents double-fire within one focus-blur cycle
+  const rirLastValRef = useRef("");    // last value from onChange; takes priority over stale set.rir prop
   function getDisplayValue(key) { const fs = fieldState[key] || {}; if (set._prefilled && fs.focused && !fs.typed) return ""; return set[key] ?? ""; }
   function getColor(key) { const fs = fieldState[key] || {}; if (!set._prefilled) return "var(--ink)"; if (fs.typed || fs.focused) return "var(--ink)"; return "var(--ink4)"; }
-  function handleFocus(key) { setFieldState(prev => ({ ...prev, [key]: { focused: true, typed: false } })); }
+  function handleFocus(key) {
+    if (key === "rir") { rirFiredRef.current = false; rirLastValRef.current = ""; }
+    setFieldState(prev => ({ ...prev, [key]: { focused: true, typed: false } }));
+    setTimeout(() => { inputRefs[key]?.current?.select(); }, 0);
+  }
   function handleChange(key, val) {
-    if (onInteract) onInteract();
+    if (key === "rir") rirLastValRef.current = val;
+    if (onInteract && key !== "rir") onInteract();
     setFieldState(prev => ({ ...prev, [key]: { ...prev[key], typed: true } }));
-    const updated = { ...set, [key]: val };
-    if (key === "rir" && val !== "" && val !== null && val !== undefined) onActivate();
-    onChange(updated);
+    onChange({ ...set, [key]: val });
+  }
+  function activateRirTimer() {
+    // Use last typed value if available, else fall back to current prop (handles tabbing through prefilled sets)
+    const val = rirLastValRef.current !== "" ? rirLastValRef.current : String(set.rir ?? "");
+    if (!rirFiredRef.current && val !== "") {
+      rirFiredRef.current = true;
+      rirLastValRef.current = "";
+      setFieldState(prev => ({ ...prev, rir: { ...prev.rir, typed: false } }));
+      onActivate();
+      return true;
+    }
+    return false;
   }
   function handleBlur(key) {
     const fs = fieldState[key] || {};
     setFieldState(prev => ({ ...prev, [key]: { ...prev[key], focused: false } }));
+    if (key === "rir") activateRirTimer();
     if (set._prefilled && !fs.typed) onChange({ ...set, _prefilled: false });
-    if (key === "rir" && set.rir !== "" && set.rir !== null && set.rir !== undefined) onActivate();
+  }
+
+  // Mobile: Enter/Done key fires timer; rirFiredRef prevents subsequent blur from double-firing
+  function handleRirKeyUp(e) {
+    if (e.key === "Enter" || e.keyCode === 13) {
+      activateRirTimer();
+    }
   }
 
   if (isCardio) {
@@ -837,19 +788,30 @@ function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange,
   }
 
   const cellInput = (key, mode, placeholder) => (
-    <input type="number" inputMode={mode} placeholder={placeholder}
+    <input ref={inputRefs[key]} type="number" inputMode={mode} placeholder={placeholder}
       value={getDisplayValue(key)} onFocus={() => handleFocus(key)}
       onChange={e => handleChange(key, e.target.value)} onBlur={() => handleBlur(key)}
-      style={{ ...inputStyle, textAlign: "center", color: getColor(key), fontWeight: 600, fontSize: 16, padding: "8px 4px" }}
-      min={key === "rir" ? 0 : undefined} max={key === "rir" ? 10 : undefined} />
+      className={key === "reps" ? "set-row-reps" : undefined}
+      style={{ ...inputStyle, textAlign: "center", color: getColor(key), fontWeight: 600, fontSize: 16, padding: "8px 4px",
+        ...(key === "weight" && prWeightValue !== null && parseFloat(set.weight) === prWeightValue ? { background: "rgba(26,122,58,0.15)", borderColor: "var(--green)" } : {}) }}
+      min={key === "rir" || key === "partials" ? 0 : undefined} max={key === "rir" ? 10 : undefined} />
+  );
+  const rirInput = (
+    <input ref={inputRefs.rir} type="number" inputMode="numeric" placeholder="—"
+      value={getDisplayValue("rir")} onFocus={() => handleFocus("rir")}
+      onChange={e => handleChange("rir", e.target.value)} onBlur={() => handleBlur("rir")}
+      onKeyUp={handleRirKeyUp}
+      style={{ ...inputStyle, textAlign: "center", color: getColor("rir"), fontWeight: 600, fontSize: 16, padding: "8px 4px" }}
+      min={0} max={10} />
   );
   return (
     <div className="fade-in" style={{ marginBottom: 6 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 1fr 28px", gap: 5, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: showPartials ? SET_GRID_PARTIALS : SET_GRID, gap: 5, alignItems: "center" }}>
         <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink3)", textAlign: "center", lineHeight: 1 }}>{index + 1}</div>
         {cellInput("reps", "numeric", "—")}
         {cellInput("weight", "decimal", "—")}
-        {cellInput("rir", "numeric", "—")}
+        {showPartials && cellInput("partials", "numeric", "—")}
+        {rirInput}
         <button onClick={onRemove} style={{ background: "none", border: "none", color: "var(--ink4)", cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
       </div>
       {isActiveRest && <RestTimer restSecs={defaultRestSecs} defaultRestSecs={defaultRestSecs} onRestChange={onRestChange} onDone={onRestDone} />}
@@ -858,14 +820,65 @@ function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange,
 }
 
 // ── Exercise Card ─────────────────────────────────────────────────────────────
-function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAddToLibrary, isActive, paused, onSetActive, onMoveUp, onMoveDown, restPrefs, onRestPrefChange, activeRestKey, onSetRestActive, activeElapsedRef, onInteract }) {
+function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAddToLibrary, isActive, paused, onSetActive, restPrefs, onRestPrefChange, activeRestKeys, onSetRestActive, onClearRestKey, activeElapsedRef, onInteract, onDragHandleTouchStart, onDragHandleMouseDown, dragMode, isDragged, onFocusNextExercise, onToggleSuperset }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [prWeightValue, setPrWeightValue] = useState(null);
   const [elapsed, setElapsed] = useState(exercise.durationSec || 0);
   const intervalRef = useRef(null);
   const startRef = useRef(null);
   const accumulatedRef = useRef(exercise.durationSec || 0);
   const exerciseRef = useRef(exercise);
+  const cardRef = useRef(null);
   const defaultRest = (exercise.name && restPrefs[exercise.name]) ? restPrefs[exercise.name] : 90;
+
+  const programmaticFocusRef = useRef(false);
+
+  function focusNextRepsAfterRest(currentSetIndex) {
+    setTimeout(() => {
+      if (!cardRef.current) { if (onFocusNextExercise) onFocusNextExercise(); return; }
+      const repsInputs = Array.from(cardRef.current.querySelectorAll('.set-row-reps'));
+      const nextEl = repsInputs[currentSetIndex + 1];
+      if (nextEl) {
+        programmaticFocusRef.current = true;
+        nextEl.focus();
+        nextEl.select();
+        setTimeout(() => { programmaticFocusRef.current = false; }, 200);
+      } else if (onFocusNextExercise) { onFocusNextExercise(); }
+    }, 500);
+  }
+
+  useEffect(() => {
+    if (!exercise.name) { setPrWeightValue(null); return; }
+    let cancelled = false;
+    async function fetchWeightPR() {
+      try {
+        const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "desc")));
+        const maxWeights = []; // max weight per workout, up to 6 entries
+        let scanned = 0;
+        for (const wDoc of wSnap.docs) {
+          if (maxWeights.length >= 6 || scanned++ >= 35) break;
+          const eSnap = await getDocs(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
+          for (const eDoc of eSnap.docs) {
+            if (eDoc.data().name === exercise.name) {
+              let max = null;
+              for (const s of (eDoc.data().sets || [])) {
+                const w = parseFloat(s.weight);
+                if (!isNaN(w) && (max === null || w > max)) max = w;
+              }
+              if (max !== null) maxWeights.push(max);
+              break;
+            }
+          }
+        }
+        // First entry = most recent workout; rest = prior workouts
+        // Expose the PR weight value so only the matching cell is highlighted
+        const isPR = maxWeights.length >= 2 && maxWeights[0] > Math.max(...maxWeights.slice(1));
+        if (!cancelled) setPrWeightValue(isPR ? maxWeights[0] : null);
+      } catch (e) { console.error(e); }
+    }
+    fetchWeightPR();
+    return () => { cancelled = true; };
+  }, [exercise.name, uid]);
 
   // Keep exerciseRef current on every render to avoid stale closure on onChange
   useEffect(() => { exerciseRef.current = exercise; });
@@ -878,7 +891,10 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
   }, [isActive]);
 
   useEffect(() => {
-    const shouldRun = exercise.timerStarted && isActive && !paused;
+    // Superset exercises keep their timer running as long as they're started;
+    // solo exercises only run while they're the active card.
+    const isSuperset = !!exercise.supersetId;
+    const shouldRun = exercise.timerStarted && (isActive || isSuperset) && !paused;
     if (shouldRun && !intervalRef.current) {
       startRef.current = Date.now();
       intervalRef.current = setInterval(() => {
@@ -892,12 +908,25 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
       const added = Math.floor((Date.now() - (startRef.current || Date.now())) / 1000);
       accumulatedRef.current += added;
       startRef.current = null;
-      // Use exerciseRef.current so we never spread a stale exercise prop
       onChange({ ...exerciseRef.current, durationSec: accumulatedRef.current });
     }
     return () => {};
-  }, [exercise.timerStarted, isActive, paused]);
+  }, [exercise.timerStarted, exercise.supersetId, isActive, paused]);
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  // The partials column shows when explicitly toggled on, and stays on by itself
+  // whenever any set already carries partials (prefill, template, resumed session).
+  const showPartials = exercise.showPartials === true ||
+    (exercise.showPartials !== false && anySetHasPartials(exercise.sets));
+  function togglePartials() {
+    if (showPartials) {
+      // Hiding the column discards any partials so they can't silently
+      // keep counting toward volume while invisible.
+      onChange({ ...exercise, showPartials: false, sets: (exercise.sets || []).map(({ partials, ...s }) => s) });
+    } else {
+      onChange({ ...exercise, showPartials: true });
+    }
+  }
 
   function addSet() {
     const newSets = [...(exercise.sets || []), { weight: "", reps: "", rir: "" }];
@@ -911,7 +940,7 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
   async function handleExerciseSelect(name) {
     try {
       const libraryEntry = EXERCISE_LIBRARY.find(e => e.name.toLowerCase() === name.toLowerCase());
-      const autoGroup = libraryEntry ? libraryEntry.muscleGroup : exercise.muscleGroup || "";
+      const autoGroup = libraryEntry ? (libraryEntry.primaryGroup || libraryEntry.muscleGroup) : exercise.muscleGroup || "";
 
       // Only fetch last 4 matches for speed
       const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "desc")));
@@ -931,18 +960,66 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
       }
       if (found) {
         const lastSets = (found.sets || []).map(s => ({ ...s, _prefilled: true }));
-        onChange({ ...exercise, name, muscleGroup: found.muscleGroup || autoGroup, sets: lastSets.length > 0 ? lastSets : [{ weight: "", reps: "", rir: "" }] });
+        // Reset any manual toggle so prefilled partials can't stay hidden while
+        // still counting toward volume.
+        onChange({ ...exercise, name, muscleGroup: found.muscleGroup || autoGroup, showPartials: undefined, sets: lastSets.length > 0 ? lastSets : [{ weight: "", reps: "", rir: "" }] });
       } else {
-        onChange({ ...exercise, name, muscleGroup: autoGroup });
+        onChange({ ...exercise, name, muscleGroup: autoGroup, showPartials: undefined });
       }
     } catch (e) { onChange({ ...exercise, name }); }
   }
 
+  // ── Compact drag mode view ──────────────────────────────────────────────────
+  if (dragMode) {
+    return (
+      <div style={{
+        background: isDragged ? "var(--cream2)" : "var(--card)",
+        border: isDragged ? "1.5px solid var(--yellow)" : "1.5px solid var(--border)",
+        borderLeft: isDragged ? "4px solid var(--yellow)" : "4px solid var(--yellow)",
+        borderRadius: 4,
+        padding: "12px 14px",
+        marginBottom: 8,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        opacity: isDragged ? 0.5 : 1,
+        boxShadow: isDragged ? "0 4px 16px rgba(240,200,0,0.3)" : "0 1px 3px rgba(0,0,0,0.06)",
+        transition: "opacity 0.15s, box-shadow 0.15s, border-color 0.15s",
+      }}>
+        <div
+          onTouchStart={onDragHandleTouchStart}
+          onMouseDown={onDragHandleMouseDown}
+          style={{ fontSize: 22, color: isDragged ? "var(--orange)" : "var(--ink3)", cursor: isDragged ? "grabbing" : "grab", padding: "4px 6px", lineHeight: 1, userSelect: "none", touchAction: "none", flexShrink: 0 }}>≡</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "var(--font-label)", fontSize: 10, color: "var(--ink4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2 }}>Exercise {index + 1}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: isDragged ? "var(--orange)" : "var(--ink)", letterSpacing: "0.03em", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {exercise.name ? exercise.name.toUpperCase() : <span style={{ color: "var(--ink4)" }}>UNNAMED</span>}
+          </div>
+          {exercise.muscleGroup && (
+            <div style={{ fontFamily: "var(--font-label)", fontSize: 10, color: "var(--ink4)", letterSpacing: "0.06em", marginTop: 2 }}>{exercise.muscleGroup}</div>
+          )}
+        </div>
+        {(exercise.sets || []).filter(s => s.reps || s.weight || s.partials || s.duration).length > 0 && (
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink4)", letterSpacing: "0.04em", flexShrink: 0 }}>
+            {(exercise.sets || []).filter(s => s.reps || s.weight || s.partials || s.duration).length} sets
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className={`fade-in stripe-accent${isActive ? " stripe-accent-active" : ""}`} onClick={onSetActive} style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderLeft: "none", borderRadius: 4, padding: "14px 14px 14px 20px", marginBottom: 10, boxShadow: isActive ? "0 2px 8px rgba(255,165,0,0.12)" : "0 1px 3px rgba(0,0,0,0.06)" }}>
+    <div ref={cardRef} className={`fade-in stripe-accent${isActive ? " stripe-accent-active" : ""}`} onClick={e => { if (programmaticFocusRef.current) return; onSetActive(); }} style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 0, padding: "14px 14px 14px 20px", marginBottom: 10, boxShadow: isActive ? "0 2px 8px rgba(240,200,0,0.10)" : "none" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
         <div style={{ flex: 1, marginRight: 8 }}>
-          <div style={{ ...labelStyle, color: isActive ? "var(--orange)" : "var(--ink3)", marginBottom: 8 }}>Exercise {index + 1}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <div
+              onTouchStart={onDragHandleTouchStart}
+              onMouseDown={onDragHandleMouseDown}
+              style={{ fontSize: 20, color: "var(--ink4)", cursor: "grab", padding: "2px 4px", lineHeight: 1, userSelect: "none", touchAction: "none", flexShrink: 0 }}
+              title="Hold to reorder">≡</div>
+            <div style={{ ...labelStyle, color: isActive ? "var(--orange)" : "var(--ink3)", marginBottom: 0 }}>Exercise {index + 1}</div>
+          </div>
 
           {/* Step 1: Muscle group */}
           <div style={{ marginBottom: 8 }}>
@@ -968,17 +1045,19 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
                     const all = library.exercises || [];
                     if (!exercise.muscleGroup) return [...all].sort((a, b) => a.localeCompare(b));
                     const inGroup = EXERCISE_LIBRARY
-                      .filter(e => e.muscleGroup === exercise.muscleGroup)
+                      .filter(e => (e.primaryGroup || e.muscleGroup) === exercise.muscleGroup)
                       .map(e => e.name);
+                    const customMappings = library.muscleGroupMappings || {};
                     const filtered = all.filter(name =>
-                      inGroup.some(n => n.toLowerCase() === name.toLowerCase())
+                      inGroup.some(n => n.toLowerCase() === name.toLowerCase()) ||
+                      customMappings[name]?.primaryGroup === exercise.muscleGroup
                     );
                     return filtered.sort((a, b) => a.localeCompare(b));
                   })()}
                   placeholder={exercise.muscleGroup ? `${exercise.muscleGroup} exercises…` : "Select muscle group first…"}
                 />
                 {exercise.name && exercise.name.trim() && !(library.exercises || []).map(e => e.toLowerCase()).includes(exercise.name.trim().toLowerCase()) && (
-                  <button onMouseDown={e => { e.preventDefault(); onAddToLibrary("exercises", exercise.name.trim()); }}
+                  <button onMouseDown={e => { e.preventDefault(); onAddToLibrary("exercises", exercise.name.trim(), exercise.muscleGroup); }}
                     style={{ marginTop: 5, width: "100%", padding: "7px 8px", background: "transparent", border: "1.5px dashed var(--orange2)", borderRadius: 3, color: "var(--orange)", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-label)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer" }}>
                     + Save "{exercise.name.trim()}" to library
                   </button>
@@ -989,23 +1068,15 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-          {exercise.timerStarted && isActive && (
+{exercise.timerStarted && (isActive || !!exercise.supersetId) && (
             <div style={{ fontFamily: "var(--font-display)", fontSize: 22, color: paused ? "var(--ink3)" : "var(--orange)", background: "var(--cream)", padding: "3px 8px", borderRadius: 3, letterSpacing: "0.04em", border: "1.5px solid var(--cream3)" }}>
               {paused ? "⏸ " : ""}{formatTime(elapsed)}
             </div>
           )}
-          {exercise.timerStarted && !isActive && (exercise.durationSec || 0) > 0 && (
+          {exercise.timerStarted && !(isActive || !!exercise.supersetId) && (exercise.durationSec || 0) > 0 && (
             <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink4)", background: "var(--cream)", padding: "3px 8px", borderRadius: 3, letterSpacing: "0.04em" }}>{formatTime(exercise.durationSec || 0)} ✓</div>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <button onClick={e => { e.stopPropagation(); onMoveUp && onMoveUp(); }}
-                disabled={!onMoveUp}
-                style={{ background: "none", border: "none", color: onMoveUp ? "var(--ink3)" : "var(--cream3)", cursor: onMoveUp ? "pointer" : "default", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>▲</button>
-              <button onClick={e => { e.stopPropagation(); onMoveDown && onMoveDown(); }}
-                disabled={!onMoveDown}
-                style={{ background: "none", border: "none", color: onMoveDown ? "var(--ink3)" : "var(--cream3)", cursor: onMoveDown ? "pointer" : "default", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>▼</button>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button onClick={e => { e.stopPropagation(); onRemove(); }} style={{ background: "none", border: "none", color: "var(--ink4)", cursor: "pointer", fontSize: 18 }}>🗑</button>
           </div>
         </div>
@@ -1014,7 +1085,7 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
       {exercise.sets?.length > 0 && (() => {
         const isCardio = CARDIO_MUSCLE_GROUPS.has(exercise.muscleGroup);
         return (
-          <div style={{ display: "grid", gridTemplateColumns: isCardio ? "22px 1fr 1fr 28px" : "22px 1fr 1fr 1fr 28px", gap: 5, marginBottom: 4, paddingBottom: 4, borderBottom: "1.5px solid var(--cream3)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isCardio ? "22px 1fr 1fr 28px" : (showPartials ? SET_GRID_PARTIALS : SET_GRID), gap: 5, marginBottom: 4, paddingBottom: 4, borderBottom: "1.5px solid var(--cream3)" }}>
             <div />
             {isCardio ? (
               <>
@@ -1025,6 +1096,7 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
               <>
                 <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>Reps</div>
                 <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>Weight</div>
+                {showPartials && <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0, color: "var(--orange)" }}>Part</div>}
                 <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>RIR</div>
               </>
             )}
@@ -1039,12 +1111,37 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
         return (
           <SetRow key={i} set={set} index={i} onChange={val => updateSet(i, val)} onRemove={() => removeSet(i)}
             defaultRestSecs={defaultRest} onRestChange={handleRestChange} isCardio={isCardio}
-            isActiveRest={activeRestKey === restKey} onActivate={() => onSetRestActive(restKey)} onRestDone={() => onSetRestActive(null)}
-            onInteract={onInteract} />
+            isActiveRest={!!activeRestKeys?.[restKey]} onActivate={() => onSetRestActive(restKey)}
+            onRestDone={() => { onClearRestKey(restKey); focusNextRepsAfterRest(i); }}
+            onInteract={onInteract} prWeightValue={prWeightValue}
+            showPartials={showPartials && !isCardio}
+            />
         );
       })}
 
-      <button onClick={addSet} style={{ ...btnStyle("ghost"), width: "100%", marginTop: 8, fontSize: 12, color: "var(--orange)", borderColor: "var(--orange2)", borderStyle: "dashed" }}>+ Add Set</button>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={addSet} style={{ ...btnStyle("ghost"), flex: 1, fontSize: 12, color: "var(--orange)", borderColor: "var(--orange2)", borderStyle: "dashed" }}>+ Add Set</button>
+        {!CARDIO_MUSCLE_GROUPS.has(exercise.muscleGroup) && (
+          <button onClick={togglePartials}
+            title={showPartials ? "Hide the partials column" : "Log partial reps for this exercise"}
+            style={{ ...btnStyle("ghost"), flexShrink: 0, fontSize: 12, padding: "8px 10px", whiteSpace: "nowrap",
+              color: showPartials ? "var(--orange)" : "var(--ink3)",
+              borderColor: showPartials ? "var(--orange2)" : "var(--border)",
+              borderStyle: showPartials ? "solid" : "dashed" }}>
+            {showPartials ? "− Partials" : "+ Partials"}
+          </button>
+        )}
+        {onToggleSuperset && (
+          <button onClick={onToggleSuperset}
+            title={exercise.supersetId ? "Remove from superset" : "Link with next exercise as superset"}
+            style={{ ...btnStyle("ghost"), flexShrink: 0, fontSize: 12, padding: "8px 10px", whiteSpace: "nowrap",
+              color: exercise.supersetId ? "var(--orange)" : "var(--ink3)",
+              borderColor: exercise.supersetId ? "var(--orange2)" : "var(--border)",
+              borderStyle: exercise.supersetId ? "solid" : "dashed" }}>
+            {exercise.supersetId ? "🔗 Super" : "🔗"}
+          </button>
+        )}
+      </div>
       {showHistory && exercise.name && <ExerciseHistoryPanel exerciseName={exercise.name} uid={uid} onClose={() => setShowHistory(false)} />}
     </div>
   );
@@ -1118,17 +1215,150 @@ function SessionSummaryScreen({ stats, onDismiss }) {
   );
 }
 
+
+// ── Drag-to-Reorder Hook ───────────────────────────────────────────────────────
+function useDragReorder(items, onReorder, onDragModeChange) {
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+  const [dragMode, setDragMode] = useState(false);
+  const longPressTimer = useRef(null);
+  const cardRefs = useRef([]);
+  const isDragging = useRef(false);
+  const restoreTimer = useRef(null);
+  // Snapshot of card midpoints captured at drag activation (before collapse re-render)
+  const cardMidpoints = useRef([]);
+  const currentDragIndexRef = useRef(null);
+  const currentOverIndexRef = useRef(null);
+
+  function snapshotMidpoints() {
+    cardMidpoints.current = cardRefs.current.map(el => {
+      if (!el) return 0;
+      const r = el.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
+  }
+
+  function activateDrag(index) {
+    // Snapshot positions BEFORE state change collapses cards
+    snapshotMidpoints();
+    isDragging.current = true;
+    currentDragIndexRef.current = index;
+    currentOverIndexRef.current = index;
+    setDragMode(true);
+    setDragIndex(index);
+    setOverIndex(index);
+    if (onDragModeChange) onDragModeChange(true);
+    if (navigator.vibrate) navigator.vibrate(40);
+  }
+
+  function commitDrag(fromIndex, toIndex) {
+    if (fromIndex !== null && toIndex !== null && fromIndex !== toIndex) {
+      const next = [...items];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      onReorder(next);
+    }
+    isDragging.current = false;
+    currentDragIndexRef.current = null;
+    currentOverIndexRef.current = null;
+    setDragIndex(null);
+    setOverIndex(null);
+    restoreTimer.current = setTimeout(() => {
+      setDragMode(false);
+      if (onDragModeChange) onDragModeChange(false);
+    }, 500);
+  }
+
+  function updateOverFromY(y) {
+    // After collapse, midpoints are stale — recompute from current DOM
+    const mids = cardRefs.current.map(el => {
+      if (!el) return 0;
+      const r = el.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
+    let best = 0;
+    let bestDist = Math.abs(y - mids[0]);
+    for (let i = 1; i < mids.length; i++) {
+      const d = Math.abs(y - mids[i]);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    currentOverIndexRef.current = best;
+    setOverIndex(best);
+  }
+
+  // ── Touch handlers ───────────────────────────────────────────────────────────
+  function handleHandleTouchStart(index, e) {
+    e.stopPropagation();
+    clearTimeout(restoreTimer.current);
+    longPressTimer.current = setTimeout(() => activateDrag(index), 500);
+  }
+
+  function handleHandleTouchMove(e) {
+    if (!isDragging.current) { clearTimeout(longPressTimer.current); return; }
+    e.preventDefault();
+    updateOverFromY(e.touches[0].clientY);
+  }
+
+  function handleHandleTouchEnd() {
+    clearTimeout(longPressTimer.current);
+    if (!isDragging.current) return;
+    commitDrag(currentDragIndexRef.current, currentOverIndexRef.current);
+  }
+
+  // ── Mouse handlers (desktop) ─────────────────────────────────────────────────
+  function handleHandleMouseDown(index, e) {
+    e.stopPropagation();
+    e.preventDefault();
+    clearTimeout(restoreTimer.current);
+    longPressTimer.current = setTimeout(() => activateDrag(index), 500);
+
+    function onMouseMove(ev) {
+      if (!isDragging.current) { clearTimeout(longPressTimer.current); return; }
+      updateOverFromY(ev.clientY);
+    }
+    function onMouseUp() {
+      clearTimeout(longPressTimer.current);
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      if (!isDragging.current) return;
+      commitDrag(currentDragIndexRef.current, currentOverIndexRef.current);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }
+
+  function setCardRef(index, el) {
+    cardRefs.current[index] = el;
+  }
+
+  return {
+    dragIndex, overIndex, dragMode,
+    handleHandleTouchStart,
+    handleHandleTouchMove,
+    handleHandleTouchEnd,
+    handleHandleMouseDown,
+    setCardRef,
+  };
+}
+
 function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, onRestPrefChange, templates, onSaveTemplate, pendingTemplate }) {
   const draft = loadWorkoutDraft();
 
   const [workout, setWorkout] = useState(draft?.workout || { date: today(), location: "", workoutType: "", exerciseGroup: "", bodyWeight: "" });
   const [exercises, setExercises] = useState(draft?.exercises || []);
   const [totalSeconds, setTotalSeconds] = useState(draft?.totalSeconds || 0);
+  // Wall-clock refs so the timer never drifts when the app is backgrounded
+  const activeMsRef = useRef((draft?.totalSeconds || 0) * 1000);
+  const activeStartMsRef = useRef(
+    (draft?.workoutStarted && !(draft?.paused)) ? Date.now() : null
+  );
   const [paused, setPaused] = useState(draft ? (draft.paused ?? false) : false);
   const [workoutStarted, setWorkoutStarted] = useState(draft?.workoutStarted || false);
   const [saving, setSaving] = useState(false);
   const [activeExerciseIndex, setActiveExerciseIndex] = useState(draft?.activeExerciseIndex ?? null);
-  const [activeRestKey, setActiveRestKey] = useState(null);
+  const [activeRestKeys, setActiveRestKeys] = useState({});
+  const addRestKey = key => setActiveRestKeys(prev => ({...prev, [key]: true}));
+  const removeRestKey = key => setActiveRestKeys(prev => { const n = {...prev}; delete n[key]; return n; });
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [postRating, setPostRating] = useState(0);
@@ -1155,7 +1385,10 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
 
   useEffect(() => {
     if (workoutStarted && !paused && !totalTimerRef.current) {
-      totalTimerRef.current = setInterval(() => setTotalSeconds(s => s + 1), 1000);
+      totalTimerRef.current = setInterval(() => {
+        const ms = activeMsRef.current + (activeStartMsRef.current ? Date.now() - activeStartMsRef.current : 0);
+        setTotalSeconds(Math.round(ms / 1000));
+      }, 1000);
     }
     if (paused && totalTimerRef.current) { clearInterval(totalTimerRef.current); totalTimerRef.current = null; }
   }, [workoutStarted, paused]);
@@ -1176,24 +1409,62 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
     const newIndex = exercises.length;
     setExercises(prev => [...prev, { id: Date.now(), name: "", muscleGroup: "", sets: [{ weight: "", reps: "", rir: "" }], timerStarted: false }]);
     setActiveExerciseIndex(newIndex);
-    // Don't clear activeRestKey here — let the previous exercise's rest timer keep running
+    // Don't clear rest timers here — let any running rest timers keep going
     // until the user actually starts entering data in the new exercise
-    if (!workoutStarted) setWorkoutStarted(true);
+    if (!workoutStarted) {
+      activeMsRef.current = 0;
+      activeStartMsRef.current = Date.now();
+      setWorkoutStarted(true);
+    }
   }
-  function updateExercise(id, val) { setExercises(prev => prev.map(e => e.id === id ? val : e)); }
+  function togglePause() {
+    setPaused(p => {
+      if (!p) {
+        if (activeStartMsRef.current) {
+          activeMsRef.current += Date.now() - activeStartMsRef.current;
+          activeStartMsRef.current = null;
+        }
+      } else {
+        activeStartMsRef.current = Date.now();
+      }
+      return !p;
+    });
+  }
+  function updateExercise(id, val) {
+    setExercises(prev => prev.map(e => {
+      if (e.id !== id) return e;
+      // Always preserve supersetId from current state — only toggleSuperset
+      // is allowed to change it. ExerciseCard closures must not clobber it.
+      return { ...val, supersetId: e.supersetId };
+    }));
+  }
   function removeExercise(id) {
     setExercises(prev => { const next = prev.filter(e => e.id !== id); setActiveExerciseIndex(next.length > 0 ? next.length - 1 : null); return next; });
   }
-  function moveExercise(i, dir) {
+  function toggleSuperset(id) {
     setExercises(prev => {
-      const next = [...prev];
-      const j = i + dir;
-      if (j < 0 || j >= next.length) return prev;
-      [next[i], next[j]] = [next[j], next[i]];
-      setActiveExerciseIndex(j);
-      return next;
+      const idx = prev.findIndex(e => e.id === id);
+      const ex = prev[idx];
+      if (ex.supersetId) {
+        // Unlink: if only one other member remains, also clear their supersetId
+        const siblings = prev.filter(e => e.supersetId === ex.supersetId && e.id !== id);
+        return prev.map(e => {
+          if (e.id === id) return { ...e, supersetId: undefined };
+          if (siblings.length === 1 && e.supersetId === ex.supersetId) return { ...e, supersetId: undefined };
+          return e;
+        });
+      }
+      // Link: join with next card, or previous if last
+      const partnerId = idx < prev.length - 1 ? prev[idx + 1].id : (idx > 0 ? prev[idx - 1].id : null);
+      if (!partnerId) return prev;
+      const partner = prev.find(e => e.id === partnerId);
+      const ssId = partner.supersetId || `ss-${Date.now()}`;
+      return prev.map(e => (e.id === id || e.id === partnerId) ? { ...e, supersetId: ssId } : e);
     });
   }
+  const dragReorder = useDragReorder(exercises, newOrder => {
+    setExercises(newOrder);
+  });
 
   function loadTemplate(template) {
     setTemplateSelectorDismissed(true);
@@ -1234,7 +1505,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
       exercises: exercises.filter(ex => ex.name).map(ex => ({
         name: ex.name,
         muscleGroup: ex.muscleGroup || "",
-        sets: (ex.sets || []).filter(s => s.reps || s.weight).map(({ _prefilled, ...s }) => s),
+        sets: (ex.sets || []).filter(s => s.reps || s.weight || s.partials || s.duration || s.distance).map(cleanSetForSave),
       })),
       updatedAt: serverTimestamp(),
     };
@@ -1255,27 +1526,36 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
       if (workout.location) onAddToLibrary("locations", workout.location);
       if (workout.workoutType) onAddToLibrary("workoutTypes", workout.workoutType);
       if (workout.exerciseGroup) onAddToLibrary("exerciseGroups", workout.exerciseGroup);
+
+      // Pre-compute per-exercise data so we can derive an accurate total before writing the workout doc.
+      // The per-exercise timers use absolute wall-clock references and are accurate across
+      // background/foreground transitions; totalSeconds (setInterval) may lag on mobile.
+      const exerciseDataList = exercises.map((ex, i) => {
+        if (!ex.name) return null;
+        const cleanSets = ex.sets.filter(s => s.reps || s.weight || s.partials || s.duration || s.distance).map(cleanSetForSave);
+        const durationSec = (i === activeExerciseIndex && activeElapsedRef.current > 0)
+          ? activeElapsedRef.current : (ex.durationSec || 0);
+        const { primaryGroup, primarySets, secondarySets } = computeFractionalSets(ex.name, ex.muscleGroup, cleanSets);
+        return { ex, i, cleanSets, durationSec, primaryGroup, primarySets, secondarySets };
+      }).filter(Boolean);
+
+      const elapsedMs = activeMsRef.current + (activeStartMsRef.current ? Date.now() - activeStartMsRef.current : 0);
+      const effectiveTotalSeconds = Math.round(elapsedMs / 1000);
+
       const wRef = await addDoc(collection(db, "users", uid, "workouts"), {
         date: workout.date, location: workout.location, workoutType: workout.workoutType,
-        exerciseGroup: workout.exerciseGroup, totalSeconds, createdAt: serverTimestamp(),
+        exerciseGroup: workout.exerciseGroup, totalSeconds: effectiveTotalSeconds, createdAt: serverTimestamp(),
         bodyWeight: workout.bodyWeight ? Number(workout.bodyWeight) : null,
         sleepQuality: sleepQuality || null, energyLevel: energyLevel || null,
         postRating: postRating || null,
         userName: user.displayName || null,
       });
-      for (let i = 0; i < exercises.length; i++) {
-        const ex = exercises[i];
-        if (!ex.name) continue;
-        const cleanSets = ex.sets.filter(s => s.reps || s.weight).map(({ _prefilled, ...s }) => s);
-        // For the currently active exercise, use the live elapsed captured via activeElapsedRef
-        const durationSec = (i === activeExerciseIndex && activeElapsedRef.current > 0)
-          ? activeElapsedRef.current
-          : (ex.durationSec || null);
+      for (const { ex, i, cleanSets, durationSec, primaryGroup, primarySets, secondarySets } of exerciseDataList) {
         await addDoc(collection(db, "users", uid, "workouts", wRef.id, "exercises"), {
           name: ex.name, order: i + 1, sets: cleanSets, muscleGroup: ex.muscleGroup || null,
-          durationSec,
+          durationSec: durationSec || null, primaryGroup, primarySets, secondarySets,
         });
-        onAddToLibrary("exercises", ex.name);
+        onAddToLibrary("exercises", ex.name, ex.muscleGroup);
       }
       clearWorkoutDraft();
       const stats = computeSessionStats(exercises);
@@ -1287,25 +1567,29 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
   // Show session summary after successful save
   if (sessionStats) return <SessionSummaryScreen stats={sessionStats} onDismiss={onEnd} />;
 
+  // Bug report available during active workout
+  const activeBugButton = <BugReportButton uid={uid} currentTab="active-workout" />;
+
   const metaComplete = workout.date && workout.location && workout.workoutType && workout.exerciseGroup;
   const readinessComplete = sleepQuality > 0 && energyLevel > 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--cream)", paddingBottom: 100 }}>
+      {activeBugButton}
       {/* Top bar */}
-      <div style={{ background: "var(--card)", borderBottom: "1.5px solid var(--border)" }}>
+      <div style={{ background: "var(--cream)", borderBottom: "2.5px solid var(--ink)" }}>
         <StripeBar height={5} />
         <div style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, color: "var(--orange)", letterSpacing: "0.04em", lineHeight: 1, textShadow: "1px 1px 0 var(--red)" }}>FITTRACKR</h1>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, color: "var(--ink)", letterSpacing: "0.04em", lineHeight: 1 }}>FITTRACKR</h1>
             <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: paused ? "var(--ink3)" : "var(--ink)", letterSpacing: "0.06em", animation: paused && workoutStarted ? "pulse 1.5s infinite" : "none" }}>
               {paused && workoutStarted ? "⏸ " : ""}{formatTime(totalSeconds)}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {user.photoURL && <img src={user.photoURL} style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid var(--orange)" }} alt="" />}
+            {user?.photoURL && <img src={user.photoURL} style={{ width: 32, height: 32, borderRadius: 0, border: "2px solid var(--yellow)" }} alt="" />}
             {workoutStarted && (
-              <button onClick={() => setPaused(p => !p)} style={{ ...btnStyle(paused ? "active" : "ghost"), padding: "8px 14px" }}>
+              <button onClick={togglePause} style={{ ...btnStyle(paused ? "active" : "ghost"), padding: "8px 14px" }}>
                 {paused ? "▶ Resume" : "⏸ Pause"}
               </button>
             )}
@@ -1367,7 +1651,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
               </div>
               <div>
                 <label style={labelStyle}>Workout Type</label>
-                <ComboBox value={workout.workoutType} onChange={val => setWorkout(w => ({ ...w, workoutType: val }))} onCommit={val => onAddToLibrary("workoutTypes", val)} options={library.workoutTypes || ["Hypertrophy", "Strength", "Power", "Cardio", "Recovery"]} placeholder="Type…" />
+                <ComboBox value={workout.workoutType} onChange={val => setWorkout(w => ({ ...w, workoutType: val }))} onCommit={val => onAddToLibrary("workoutTypes", val)} options={library.workoutTypes || DEFAULT_WORKOUT_TYPES} placeholder="Type…" />
               </div>
             </div>
             <div>
@@ -1389,20 +1673,108 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
           />
         )}
 
-        {exercises.map((ex, i) => (
-          <ExerciseCard key={ex.id} exercise={ex} index={i}
-            onChange={val => updateExercise(ex.id, val)} onRemove={() => removeExercise(ex.id)}
-            uid={uid} library={library} onAddToLibrary={onAddToLibrary}
-            isActive={activeExerciseIndex === i} paused={paused} activeElapsedRef={activeElapsedRef}
-            onInteract={() => setActiveRestKey(null)}
-            onSetActive={() => setActiveExerciseIndex(i)}
-            onMoveUp={i > 0 ? () => moveExercise(i, -1) : null}
-            onMoveDown={i < exercises.length - 1 ? () => moveExercise(i, 1) : null}
-            restPrefs={restPrefs} onRestPrefChange={onRestPrefChange}
-            activeRestKey={activeRestKey} onSetRestActive={setActiveRestKey} />
-        ))}
+        <div
+          onTouchMove={dragReorder.handleHandleTouchMove}
+          onTouchEnd={dragReorder.handleHandleTouchEnd}
+          onTouchCancel={dragReorder.handleHandleTouchEnd}
+          style={{ touchAction: dragReorder.dragMode ? "none" : "auto", userSelect: dragReorder.dragMode ? "none" : "auto" }}
+        >
+          {dragReorder.dragMode && (
+            <div style={{ textAlign: "center", fontSize: 11, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>
+              Hold &amp; drag to reorder
+            </div>
+          )}
+          {(() => {
+            // Build superset label map: supersetId -> letter (A, B, C...)
+            const ssLabels = {};
+            let ssCounter = 0;
+            exercises.forEach(e => {
+              if (e.supersetId && !ssLabels[e.supersetId]) {
+                ssLabels[e.supersetId] = String.fromCharCode(65 + ssCounter++);
+              }
+            });
+            return exercises.map((ex, i) => {
+            const isDragged = dragReorder.dragIndex === i;
+            const isOver = dragReorder.overIndex === i && dragReorder.dragIndex !== null && !isDragged;
+            const insertAbove = isOver && dragReorder.dragIndex > i;
+            const insertBelow = isOver && dragReorder.dragIndex < i;
+            // Superset grouping context
+            const ssId = ex.supersetId;
+            const ssLabel = ssId ? ssLabels[ssId] : null;
+            const activeEx = activeExerciseIndex !== null ? exercises[activeExerciseIndex] : null;
+            const inActiveSuperset = !!ssId && !!activeEx && activeEx.supersetId === ssId;
+            const isFirstInSS = ssId && exercises.findIndex(e => e.supersetId === ssId) === i;
+            const isLastInSS = ssId && [...exercises].reverse().findIndex(e => e.supersetId === ssId) === (exercises.length - 1 - i);
+            return (
+              <div key={ex.id} ref={el => dragReorder.setCardRef(i, el)} className="exercise-card-container">
+                {/* Insertion line above */}
+                {dragReorder.dragMode && (
+                  <div style={{
+                    height: insertAbove ? 3 : 0,
+                    background: "var(--orange)",
+                    borderRadius: 2,
+                    margin: insertAbove ? "4px 0" : 0,
+                    transition: "height 0.1s ease, margin 0.1s ease",
+                    boxShadow: insertAbove ? "0 0 8px rgba(240,200,0,0.6)" : "none",
+                  }} />
+                )}
+                {isFirstInSS && !dragReorder.dragMode && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, paddingLeft: 4 }}>
+                    <div style={{ fontFamily: "var(--font-label)", fontSize: 10, letterSpacing: "0.12em", color: "var(--orange)", fontWeight: 700, textTransform: "uppercase" }}>
+                      🔗 Superset {ssLabel}
+                    </div>
+                    <div style={{ flex: 1, height: 1, background: "var(--orange2)" }} />
+                  </div>
+                )}
+                <div style={ssId && !dragReorder.dragMode ? {
+                  borderLeft: "3px solid var(--yellow)",
+                  paddingLeft: 4,
+                  marginBottom: isLastInSS ? 8 : 0,
+                } : {}}>
+                <ExerciseCard exercise={ex} index={i}
+                  onChange={val => updateExercise(ex.id, val)} onRemove={() => removeExercise(ex.id)}
+                  uid={uid} library={library} onAddToLibrary={onAddToLibrary}
+                  isActive={activeExerciseIndex === i || inActiveSuperset}
+                  paused={paused} activeElapsedRef={activeElapsedRef}
+                  onInteract={ex.supersetId ? undefined : () => setActiveRestKeys({})}
+                  onSetActive={() => setActiveExerciseIndex(i)}
+                  restPrefs={restPrefs} onRestPrefChange={onRestPrefChange}
+                  activeRestKeys={activeRestKeys} onSetRestActive={ex.supersetId ? addRestKey : key => setActiveRestKeys({[key]: true})} onClearRestKey={removeRestKey}
+                  onDragHandleTouchStart={e => dragReorder.handleHandleTouchStart(i, e)}
+                  onDragHandleMouseDown={e => dragReorder.handleHandleMouseDown(i, e)}
+                  dragMode={dragReorder.dragMode}
+                  isDragged={isDragged}
+                  onToggleSuperset={dragReorder.dragMode ? undefined : () => toggleSuperset(ex.id)}
+                  onFocusNextExercise={() => {
+                    setTimeout(() => {
+                      const allExerciseCards = document.querySelectorAll('.exercise-card-container');
+                      const nextCard = allExerciseCards[i + 1];
+                      if (nextCard) {
+                        const firstReps = nextCard.querySelector('.set-row-reps');
+                        if (firstReps) { firstReps.focus(); firstReps.select(); }
+                      }
+                    }, 150);
+                  }}
+/>
+                </div>
+                {/* Insertion line below */}
+                {dragReorder.dragMode && (
+                  <div style={{
+                    height: insertBelow ? 3 : 0,
+                    background: "var(--orange)",
+                    borderRadius: 2,
+                    margin: insertBelow ? "4px 0" : 0,
+                    transition: "height 0.1s ease, margin 0.1s ease",
+                    boxShadow: insertBelow ? "0 0 8px rgba(240,200,0,0.6)" : "none",
+                  }} />
+                )}
+              </div>
+            );
+          });
+          })()}
+        </div>
 
-        <button onClick={addExercise} disabled={!metaComplete} style={{ ...btnStyle("primary"), width: "100%", padding: "14px", fontSize: 16, opacity: metaComplete ? 1 : 0.45, boxShadow: metaComplete ? "0 3px 0 var(--red)" : "none" }}>
+        <button onClick={addExercise} disabled={!metaComplete} style={{ ...btnStyle("primary"), width: "100%", padding: "14px", fontSize: 16, opacity: metaComplete ? 1 : 0.45, boxShadow: metaComplete ? "0 3px 0 var(--ink)" : "none" }}>
           {metaComplete ? "+ Add Exercise" : "Fill session details first"}
         </button>
 
@@ -1463,7 +1835,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
               <div style={{ marginBottom: 24, padding: 14, background: "var(--cream)", borderRadius: 4, border: "1.5px solid var(--border)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: saveAsTemplate ? 12 : 0 }}>
                   <label style={{ ...labelStyle, marginBottom: 0, cursor: "pointer" }}>Save as Template?</label>
-                  <div onClick={() => setSaveAsTemplate(p => !p)} style={{ width: 44, height: 24, borderRadius: 12, background: saveAsTemplate ? "var(--orange)" : "var(--cream3)", cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                  <div onClick={() => setSaveAsTemplate(p => !p)} style={{ width: 44, height: 24, borderRadius: 12, background: saveAsTemplate ? "var(--yellow)" : "var(--cream3)", cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
                     <div style={{ position: "absolute", top: 2, left: saveAsTemplate ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "var(--card)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s" }} />
                   </div>
                 </div>
@@ -1548,15 +1920,26 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
       ...ex, sets: ex.sets.filter((_, j) => j !== setIdx)
     }));
   }
+  const showsPartials = ex => ex.showPartials === true ||
+    (ex.showPartials !== false && anySetHasPartials(ex.sets));
+  function togglePartials(exIdx) {
+    setExercises(prev => prev.map((ex, i) => {
+      if (i !== exIdx) return ex;
+      if (!showsPartials(ex)) return { ...ex, showPartials: true };
+      return { ...ex, showPartials: false, sets: ex.sets.map(({ partials, ...s }) => s) };
+    }));
+  }
 
   async function handleSave() {
     setSaving(true);
     try {
       for (const ex of exercises) {
-        const cleanSets = ex.sets.filter(s => s.reps || s.weight || s.duration || s.distance)
-          .map(({ _prefilled, ...s }) => s);
+        const cleanSets = ex.sets.filter(s => s.reps || s.weight || s.partials || s.duration || s.distance)
+          .map(cleanSetForSave);
+        const { primaryGroup: pg, primarySets: ps, secondarySets: ss } = computeFractionalSets(ex.name, ex.muscleGroup, cleanSets);
         await setDoc(doc(db, "users", uid, "workouts", workout.id, "exercises", ex.id),
-          { name: ex.name, muscleGroup: ex.muscleGroup || null, order: ex.order || 0, sets: cleanSets },
+          { name: ex.name, muscleGroup: ex.muscleGroup || null, order: ex.order || 0, sets: cleanSets,
+            primaryGroup: pg, primarySets: ps, secondarySets: ss },
           { merge: true }
         );
       }
@@ -1595,7 +1978,7 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
                 {ex.muscleGroup && <span style={{ fontFamily: "var(--font-label)", fontSize: 11, color: "var(--ink4)", marginLeft: 8, letterSpacing: "0.08em" }}>{ex.muscleGroup}</span>}
               </div>
               {/* Column headers */}
-              <div style={{ display: "grid", gridTemplateColumns: isCardio(ex) ? "22px 1fr 1fr 28px" : "22px 1fr 1fr 1fr 28px", gap: 5, marginBottom: 4 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isCardio(ex) ? "22px 1fr 1fr 28px" : (showsPartials(ex) ? SET_GRID_PARTIALS : SET_GRID), gap: 5, marginBottom: 4 }}>
                 <div />
                 {isCardio(ex) ? (
                   <><div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>Duration</div>
@@ -1603,13 +1986,14 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
                 ) : (
                   <><div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>Reps</div>
                   <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>Weight</div>
+                  {showsPartials(ex) && <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0, color: "var(--orange)" }}>Part</div>}
                   <div style={{ ...labelStyle, textAlign: "center", marginBottom: 0 }}>RIR</div></>
                 )}
                 <div />
               </div>
               {/* Sets */}
               {ex.sets.map((set, setIdx) => (
-                <div key={setIdx} style={{ display: "grid", gridTemplateColumns: isCardio(ex) ? "22px 1fr 1fr 28px" : "22px 1fr 1fr 1fr 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
+                <div key={setIdx} style={{ display: "grid", gridTemplateColumns: isCardio(ex) ? "22px 1fr 1fr 28px" : (showsPartials(ex) ? SET_GRID_PARTIALS : SET_GRID), gap: 5, marginBottom: 5, alignItems: "center" }}>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--ink3)", textAlign: "center" }}>{setIdx + 1}</div>
                   {isCardio(ex) ? (
                     <>
@@ -1624,6 +2008,10 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
                         style={{ ...inputStyle, textAlign: "center", fontWeight: 600, fontSize: 15, padding: "7px 4px" }} placeholder="—" />
                       <input type="number" value={set.weight || ""} onChange={e => updateSet(exIdx, setIdx, "weight", e.target.value)}
                         style={{ ...inputStyle, textAlign: "center", fontWeight: 600, fontSize: 15, padding: "7px 4px" }} placeholder="—" />
+                      {showsPartials(ex) && (
+                        <input type="number" value={set.partials || ""} onChange={e => updateSet(exIdx, setIdx, "partials", e.target.value)}
+                          style={{ ...inputStyle, textAlign: "center", fontWeight: 600, fontSize: 15, padding: "7px 4px" }} placeholder="—" min={0} />
+                      )}
                       <input type="number" value={set.rir !== undefined && set.rir !== null ? set.rir : ""} onChange={e => updateSet(exIdx, setIdx, "rir", e.target.value)}
                         style={{ ...inputStyle, textAlign: "center", fontWeight: 600, fontSize: 15, padding: "7px 4px" }} placeholder="—" min={0} max={10} />
                     </>
@@ -1632,8 +2020,19 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
                     style={{ background: "none", border: "none", color: "var(--ink4)", cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
                 </div>
               ))}
-              <button onClick={() => addSet(exIdx)}
-                style={{ ...btnStyle("ghost"), width: "100%", marginTop: 6, fontSize: 12, color: "var(--orange)", borderColor: "var(--orange2)", borderStyle: "dashed" }}>+ Add Set</button>
+              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                <button onClick={() => addSet(exIdx)}
+                  style={{ ...btnStyle("ghost"), flex: 1, fontSize: 12, color: "var(--orange)", borderColor: "var(--orange2)", borderStyle: "dashed" }}>+ Add Set</button>
+                {!isCardio(ex) && (
+                  <button onClick={() => togglePartials(exIdx)}
+                    style={{ ...btnStyle("ghost"), flexShrink: 0, fontSize: 12, padding: "8px 10px", whiteSpace: "nowrap",
+                      color: showsPartials(ex) ? "var(--orange)" : "var(--ink3)",
+                      borderColor: showsPartials(ex) ? "var(--orange2)" : "var(--border)",
+                      borderStyle: showsPartials(ex) ? "solid" : "dashed" }}>
+                    {showsPartials(ex) ? "− Partials" : "+ Partials"}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -1652,15 +2051,15 @@ function useDeloadSignal(uid) {
     if (!uid) return;
     async function check() {
       try {
-        // Fetch last 10 workouts (enough to find 3 with all fields)
+        // Fetch workouts within last 14 days (up to 20)
         const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "desc")));
-        const docs = wSnap.docs.slice(0, 10);
+        const cutoff14 = new Date();
+        cutoff14.setDate(cutoff14.getDate() - 14);
+        const cutoff14Str = cutoff14.toISOString().slice(0, 10);
+        const docs = wSnap.docs.slice(0, 20).filter(d => (d.data().date || '') >= cutoff14Str);
 
-        // Check if most recent workout is within 14 days
+        // Check if we have any recent workouts
         if (!docs.length) return;
-        const mostRecentDate = new Date(docs[0].data().date + "T00:00:00");
-        const daysSince = (Date.now() - mostRecentDate) / 86400000;
-        if (daysSince > 14) return;
 
         // Build workout rows with hiPct computed from exercises
         const rows = await Promise.all(docs.map(async wDoc => {
@@ -1668,22 +2067,11 @@ function useDeloadSignal(uid) {
           const eSnap = await getDocs(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
           let totalVol = 0, hiVol = 0;
           for (const eDoc of eSnap.docs) {
-            const ex = eDoc.data();
-            for (const s of (ex.sets || [])) {
-              const reps = Math.round(parseFloat(s.reps) || 0);
-              const weight = parseFloat(s.weight) || 0;
-              const rir = (s.rir !== "" && s.rir !== null && s.rir !== undefined) ? parseFloat(s.rir) : 4;
-              totalVol += reps * weight;
-              if (weight > 0 && reps > 0) {
-                for (let n = 1; n <= reps; n++) {
-                  const rr = (reps - n) + rir;
-                  const e1rm = weight * (1 + rr / 30);
-                  if (weight / e1rm >= HI_THRESHOLD) hiVol += weight;
-                }
-              }
-            }
+            const { totalVol: tv, hiVol: hv } = computeSetVolumes(eDoc.data().sets);
+            totalVol += tv; hiVol += hv;
           }
           return {
+            date: w.date ?? null,
             sleepQuality: w.sleepQuality ?? null,
             energyLevel: w.energyLevel ?? null,
             postRating: w.postRating ?? null,
@@ -1725,7 +2113,7 @@ function DeloadBanner({ uid }) {
   const { signal, dismiss } = useDeloadSignal(uid);
   if (!signal) return null;
   const isRed = signal.level === "red";
-  const bg = isRed ? "rgba(192,37,26,0.08)" : "rgba(255,165,0,0.10)";
+  const bg = isRed ? "rgba(192,37,26,0.08)" : "rgba(240,200,0,0.10)";
   const border = isRed ? "var(--red)" : "var(--orange)";
   const icon = isRed ? "🔴" : "🟡";
   const headline = isRed ? "DELOAD WEEK RECOMMENDED" : "CONSIDER A LIGHTER WEEK";
@@ -1768,34 +2156,24 @@ function TrainingReadinessCard({ uid }) {
     async function compute() {
       try {
         const wSnap = await getDocsFromServer(query(collection(db, "users", uid, "workouts"), orderBy("date", "desc")));
-        const docs = wSnap.docs.slice(0, 10);
+        // Use all workouts within last 14 days (up to 20)
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 14);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const allDocs = wSnap.docs.slice(0, 20);
+        const docs = allDocs.filter(d => (d.data().date || '') >= cutoffStr);
         if (!docs.length) { setInsufficient(true); return; }
-
-        const mostRecentDate = new Date(docs[0].data().date + "T00:00:00");
-        const daysSince = (Date.now() - mostRecentDate) / 86400000;
-        if (daysSince > 14) { setInsufficient(true); return; }
 
         const rows = await Promise.all(docs.map(async wDoc => {
           const w = wDoc.data();
           const eSnap = await getDocsFromServer(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
           let totalVol = 0, hiVol = 0;
           for (const eDoc of eSnap.docs) {
-            const ex = eDoc.data();
-            for (const s of (ex.sets || [])) {
-              const reps = Math.round(parseFloat(s.reps) || 0);
-              const weight = parseFloat(s.weight) || 0;
-              const rir = (s.rir !== "" && s.rir !== null && s.rir !== undefined) ? parseFloat(s.rir) : 4;
-              totalVol += reps * weight;
-              if (weight > 0 && reps > 0) {
-                for (let n = 1; n <= reps; n++) {
-                  const rr = (reps - n) + rir;
-                  const e1rm = weight * (1 + rr / 30);
-                  if (weight / e1rm >= HI_THRESHOLD) hiVol += weight;
-                }
-              }
-            }
+            const { totalVol: tv, hiVol: hv } = computeSetVolumes(eDoc.data().sets);
+            totalVol += tv; hiVol += hv;
           }
           return {
+            date: w.date ?? null,
             sleepQuality: w.sleepQuality ?? null,
             energyLevel: w.energyLevel ?? null,
             postRating: w.postRating ?? null,
@@ -1813,11 +2191,9 @@ function TrainingReadinessCard({ uid }) {
   }, [uid]);
 
   function getStatus(score) {
-    if (score >= 80) return { label: "Optimal",     color: "var(--green)" };
-    if (score >= 60) return { label: "Good",        color: "var(--green)" };
-    if (score >= 40) return { label: "Moderate",    color: "var(--orange)" };
-    if (score >= 20) return { label: "Fatigued",    color: "var(--red)" };
-    return              { label: "Overreached",  color: "var(--red)" };
+    if (score >= 75) return { label: "Good to Go!", color: "var(--green)",  light: "🟢" };
+    if (score >= 50) return { label: "Caution",     color: "var(--orange)", light: "🟡" };
+    return                  { label: "Deload?",     color: "var(--red)",    light: "🔴" };
   }
 
   const isLoading = readiness === null && !insufficient;
@@ -1839,16 +2215,22 @@ function TrainingReadinessCard({ uid }) {
         )}
         {readiness && (() => {
           const { score, result } = readiness;
-          const { label, color } = getStatus(score);
+          const { label, color, light } = getStatus(score);
           return (
             <>
-              {/* Score + label */}
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 64, color, lineHeight: 1, letterSpacing: "0.02em" }}>{score}</span>
-                <div>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 22, color, letterSpacing: "0.04em", lineHeight: 1 }}>{label}</div>
-                  <div style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", letterSpacing: "0.06em", marginTop: 2 }}>out of 100</div>
+              {/* Traffic light + score + label + trend */}
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                <span style={{ fontSize: 48, lineHeight: 1 }}>{light}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 28, color, letterSpacing: "0.04em", lineHeight: 1 }}>{label}</div>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--ink3)", letterSpacing: "0.04em", marginTop: 2 }}>{score} / 100</div>
                 </div>
+                {result.slopePenalty > 0 && (
+                  <div style={{ textAlign: "center", flexShrink: 0 }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "var(--orange)", lineHeight: 1 }}>↘</div>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--orange)", letterSpacing: "0.04em", marginTop: 2 }}>Declining</div>
+                  </div>
+                )}
               </div>
 
               {/* Bar */}
@@ -1878,12 +2260,153 @@ function TrainingReadinessCard({ uid }) {
               </div>
 
               <div style={{ marginTop: 12, fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", letterSpacing: "0.05em" }}>
-                Based on your 3 most recent sessions
+                Based on {result.count} session{result.count !== 1 ? "s" : ""} in the last 14 days
               </div>
             </>
           );
         })()}
       </div>
+    </div>
+  );
+}
+
+
+// ── Bug Report Button ─────────────────────────────────────────────────────────
+function BugReportButton({ uid, currentTab = "app" }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function handleSubmit() {
+    if (!text.trim()) return;
+    setSubmitting(true);
+    try {
+      // Save to Firestore
+      await addDoc(collection(db, "users", uid, "bugReports"), {
+        text: text.trim(),
+        createdAt: serverTimestamp(),
+        appVersion: APP_VERSION,
+        userAgent: navigator.userAgent,
+        tab: currentTab,
+      });
+      setText("");
+      setDone(true);
+      setTimeout(() => { setDone(false); setOpen(false); }, 2000);
+    } catch (e) {
+      console.error("Bug report error", e);
+    }
+    setSubmitting(false);
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => { setOpen(true); setDone(false); }}
+        style={{
+          position: "fixed", bottom: 70, right: 14, zIndex: 150,
+          width: 38, height: 38, borderRadius: "50%",
+          background: "var(--card)", border: "1.5px solid var(--border)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+          cursor: "pointer", fontSize: 18, display: "flex",
+          alignItems: "center", justifyContent: "center", padding: 0,
+        }}
+        title="Report a bug">🐛</button>
+
+      {open && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+          zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+        }} onClick={e => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div style={{ background: "var(--card)", borderRadius: 4, width: "100%", maxWidth: 360, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.24)" }}>
+            <StripeBar height={5} />
+            <div style={{ padding: 20 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 22, letterSpacing: "0.06em", color: "var(--ink)", marginBottom: 4 }}>REPORT A BUG</div>
+              <div style={{ fontSize: 12, color: "var(--ink4)", marginBottom: 14, lineHeight: 1.5 }}>
+                Saved to Firestore + opens a GitHub issue in your browser.
+              </div>
+              {done ? (
+                <div style={{ textAlign: "center", fontSize: 15, color: "var(--green)", padding: "16px 0", fontFamily: "var(--font-label)", letterSpacing: "0.06em" }}>
+                  ✓ Report submitted
+                </div>
+              ) : (
+                <>
+                  <textarea
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    placeholder="Describe what happened and what you expected…"
+                    rows={5}
+                    style={{ ...inputStyle, width: "100%", fontSize: 14, padding: "10px 12px", resize: "none", marginBottom: 12, fontFamily: "inherit", lineHeight: 1.5 }}
+                    autoFocus
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setOpen(false)}
+                      style={{ ...btnStyle("ghost"), flex: 1, padding: "11px" }}>Cancel</button>
+                    <button onClick={handleSubmit} disabled={!text.trim() || submitting}
+                      style={{ ...btnStyle("primary"), flex: 2, padding: "11px", boxShadow: "0 2px 0 var(--red)", opacity: !text.trim() || submitting ? 0.5 : 1 }}>
+                      {submitting ? "Submitting…" : "Submit Bug Report"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+// ── Bug Reports Viewer (Profile screen) ──────────────────────────────────────
+function BugReportsViewer({ uid }) {
+  const [reports, setReports] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || !uid) return;
+    getDocs(query(collection(db, "users", uid, "bugReports"), orderBy("createdAt", "desc")))
+      .then(snap => setReports(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+      .catch(() => setReports([]));
+  }, [expanded, uid]);
+
+  async function deleteReport(id) {
+    await deleteDoc(doc(db, "users", uid, "bugReports", id));
+    setReports(prev => prev.filter(r => r.id !== id));
+  }
+
+  return (
+    <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 12 }}>
+      <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        onClick={() => setExpanded(e => !e)}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 4, height: 16, background: "var(--orange)", borderRadius: 2 }} />
+          <span style={{ ...sectionLabelStyle, color: "var(--card)", fontSize: 11 }}>Bug Reports</span>
+        </div>
+        <span style={{ color: "var(--orange)", fontSize: 14 }}>{expanded ? "▲" : "▼"}</span>
+      </div>
+      {expanded && (
+        <div style={{ padding: 14 }}>
+          {reports === null && (
+            <div style={{ fontSize: 13, color: "var(--ink4)", fontFamily: "var(--font-label)", letterSpacing: "0.06em" }}>Loading…</div>
+          )}
+          {reports?.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--ink4)" }}>No bug reports yet.</div>
+          )}
+          {reports?.map(r => (
+            <div key={r.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--cream3)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", letterSpacing: "0.06em", marginBottom: 4 }}>
+                  {r.createdAt?.toDate?.()?.toLocaleDateString() ?? "—"}
+                </div>
+                <button onClick={() => deleteReport(r.id)}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--ink4)", padding: 0, lineHeight: 1 }}>🗑</button>
+              </div>
+              <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{r.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1939,7 +2462,7 @@ function HistoryScreen({ uid }) {
   }
 
   function subtitle(w) {
-    const parts = [w.workoutType, w.exerciseGroup, w.location].filter(Boolean);
+    const parts = [resolveWorkoutType(w.workoutType), w.exerciseGroup, w.location].filter(Boolean);
     if (parts.length > 0) return parts.join(" · ");
     if (w.importedFrom) return `Imported from ${w.importedFrom}`;
     return "";
@@ -2013,27 +2536,50 @@ function HistoryScreen({ uid }) {
               <div onClick={() => loadExercises(w.id)} style={{ color: "var(--orange)", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>{expanded === w.id ? "▲" : "▼"}</div>
             </div>
           </div>
-          {expanded === w.id && <div style={{ height: 3, background: "linear-gradient(to right, var(--orange), var(--pink))" }} />}
+          {expanded === w.id && <div style={{ height: 3, background: "var(--yellow)" }} />}
           {expanded === w.id && exercises[w.id] && (
             <div style={{ padding: "12px 16px", background: "var(--cream)" }}>
               {exercises[w.id].map((ex, i) => (
                 <div key={i} style={{ marginBottom: 14 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                    {ex.order && <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink4)", letterSpacing: "0.04em", flexShrink: 0 }}>{ex.order}.</div>}
                     <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--orange)", letterSpacing: "0.04em" }}>{ex.name.toUpperCase()}</div>
                     {ex.muscleGroup && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{ex.muscleGroup}</span>}
                     {ex.durationSec > 0 && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-display)", letterSpacing: "0.06em" }}>⏱ {formatTime(ex.durationSec)}</span>}
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr", gap: 4, marginBottom: 4 }}>
-                    {["","Reps","Weight","RIR"].map((h, i) => <div key={i} style={{ ...labelStyle, textAlign: i > 0 ? "center" : "left", marginBottom: 0 }}>{h}</div>)}
-                  </div>
-                  {(ex.sets || []).map((set, j) => (
-                    <div key={j} style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr", gap: 4, marginBottom: 4, padding: "4px 0", borderBottom: "1px solid var(--cream3)" }}>
-                      <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink3)" }}>{j + 1}</div>
-                      <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.reps}</div>
-                      <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.weight}<span style={{ color: "var(--ink4)", fontSize: 11 }}>lb</span></div>
-                      <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.rir !== "" && set.rir != null ? set.rir : "—"}</div>
-                    </div>
-                  ))}
+                  {(() => {
+                    const isCardioEx = CARDIO_MUSCLE_GROUPS.has(ex.muscleGroup);
+                    const hasDuration = (ex.sets || []).some(s => s.duration);
+                    const showCardio = isCardioEx || hasDuration;
+                    const cols = showCardio ? "24px 1fr 1fr" : "24px 1fr 1fr 1fr";
+                    const headers = showCardio ? ["","Duration","Distance"] : ["","Reps","Weight","RIR"];
+                    return (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 4, marginBottom: 4 }}>
+                          {headers.map((h, i) => <div key={i} style={{ ...labelStyle, textAlign: i > 0 ? "center" : "left", marginBottom: 0 }}>{h}</div>)}
+                        </div>
+                        {(ex.sets || []).length === 0 && showCardio ? (
+                          <div style={{ fontSize: 12, color: "var(--ink4)", fontStyle: "italic", padding: "4px 0" }}>No duration or distance recorded</div>
+                        ) : (ex.sets || []).map((set, j) => (
+                          <div key={j} style={{ display: "grid", gridTemplateColumns: cols, gap: 4, marginBottom: 4, padding: "4px 0", borderBottom: "1px solid var(--cream3)" }}>
+                            <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink3)" }}>{j + 1}</div>
+                            {showCardio ? (
+                              <>
+                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.duration || "—"}</div>
+                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.distance ? `${set.distance} mi` : "—"}</div>
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{formatReps(set) || "—"}</div>
+                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.weight ? <>{set.weight}<span style={{ color: "var(--ink4)", fontSize: 11 }}>lb</span></> : "—"}</div>
+                                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 15 }}>{set.rir !== "" && set.rir != null ? set.rir : "—"}</div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -2109,7 +2655,7 @@ function TemplatesScreen({ uid, templates, onStartWorkout }) {
           {/* Expanded detail */}
           {expanded === t.id && (
             <>
-              <div style={{ height: 3, background: "linear-gradient(to right, var(--orange), var(--pink))" }} />
+              <div style={{ height: 3, background: "var(--yellow)" }} />
               <div style={{ padding: "12px 14px", background: "var(--cream)" }}>
                 {t.exercises.map((ex, i) => (
                   <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: i < t.exercises.length - 1 ? "1px solid var(--cream3)" : "none" }}>
@@ -2125,7 +2671,7 @@ function TemplatesScreen({ uid, templates, onStartWorkout }) {
                     {(ex.sets || []).map((s, j) => (
                       <div key={j} style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr", gap: 4, marginBottom: 3, padding: "3px 0", borderBottom: "1px solid var(--cream3)" }}>
                         <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink3)" }}>{j + 1}</div>
-                        <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{s.reps}</div>
+                        <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{formatReps(s)}</div>
                         <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{s.weight}<span style={{ color: "var(--ink4)", fontSize: 10 }}>lb</span></div>
                         <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{s.rir !== "" && s.rir != null ? s.rir : "—"}</div>
                       </div>
@@ -2145,24 +2691,29 @@ function TemplatesScreen({ uid, templates, onStartWorkout }) {
   );
 }
 
+
+// ── Bug Report Button ─────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab, onNewWorkout }) {
   const items = [{ id: "log", icon: "➕", label: "Log" }, { id: "history", icon: "📅", label: "History" }, { id: "templates", icon: "📋", label: "Templates" }, { id: "analytics", icon: "📊", label: "Analytics" }, { id: "profile", icon: "👤", label: "Profile" }];
   return (
-    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "var(--card)", borderTop: "1.5px solid var(--border)", zIndex: 100 }}>
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "var(--cream)", borderTop: "2.5px solid var(--ink)", zIndex: 100 }}>
       <div style={{ display: "flex" }}>
-        {items.map(item => (
-          <button key={item.id} onClick={() => item.id === "log" ? onNewWorkout() : setTab(item.id)}
-            style={{ flex: 1, padding: "11px 0", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: tab === item.id ? "var(--orange)" : "var(--ink3)", transition: "color 0.15s", borderTop: tab === item.id ? "2.5px solid var(--orange)" : "2.5px solid transparent" }}>
-            <span style={{ fontSize: 18 }}>{item.icon}</span>
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "var(--font-label)" }}>{item.label}</span>
-          </button>
-        ))}
+        {items.map(item => {
+          const isActive = item.id === "log" ? false : tab === item.id;
+          return (
+            <button key={item.id} onClick={() => item.id === "log" ? onNewWorkout() : setTab(item.id)}
+              style={{ flex: 1, padding: "10px 0", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, transition: "background 0.15s", background: isActive ? "var(--yellow)" : "transparent", borderRight: "1px solid var(--border)", color: isActive ? "var(--black)" : "var(--ink3)" }}>
+              <span style={{ fontSize: 17 }}>{item.icon}</span>
+              <span style={{ fontSize: 8, fontWeight: isActive ? 700 : 400, letterSpacing: "0.15em", textTransform: "uppercase", fontFamily: "var(--font-label)" }}>{item.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function ProfileScreen({ user, onSeedLibrary, onImportStrong }) {
+function ProfileScreen({ user, onSeedLibrary, onImportStrong, volumeBackfilled }) {
   const [seeding, setSeeding] = useState(false);
   const [seeded, setSeeded] = useState(false);
   const [darkMode, setDarkMode] = useState(() => document.body.classList.contains("dark"));
@@ -2177,6 +2728,37 @@ function ProfileScreen({ user, onSeedLibrary, onImportStrong }) {
 
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
+
+  async function handleBackfill() {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const wSnap = await getDocs(query(collection(db, "users", user.uid, "workouts"), orderBy("date", "desc")));
+      let updated = 0, skipped = 0;
+      for (const wDoc of wSnap.docs) {
+        const eSnap = await getDocs(collection(db, "users", user.uid, "workouts", wDoc.id, "exercises"));
+        for (const eDoc of eSnap.docs) {
+          const ex = eDoc.data();
+          // Only backfill if primarySets not yet written
+          if (ex.primarySets != null) { skipped++; continue; }
+          const { primaryGroup, primarySets, secondarySets } = computeFractionalSets(ex.name, ex.muscleGroup, ex.sets || []);
+          await setDoc(doc(db, "users", user.uid, "workouts", wDoc.id, "exercises", eDoc.id),
+            { primaryGroup, primarySets, secondarySets }, { merge: true });
+          updated++;
+        }
+      }
+      // Mark backfill complete on user meta
+      await setDoc(doc(db, "users", user.uid, "meta", "library"),
+        { volumeDataBackfilled: true }, { merge: true });
+      setBackfillResult({ updated, skipped });
+    } catch (e) {
+      console.error("Backfill error", e);
+      setBackfillResult({ error: e.message });
+    }
+    setBackfilling(false);
+  }
 
   // Apply saved dark mode on mount
   useEffect(() => {
@@ -2304,7 +2886,7 @@ function ProfileScreen({ user, onSeedLibrary, onImportStrong }) {
             );
             await addDoc(collection(db, 'users', user.uid, 'workouts', wRef.id, 'exercises'), {
               name: exName,
-              muscleGroup: libEntry ? libEntry.muscleGroup : '',
+              muscleGroup: libEntry ? (libEntry.primaryGroup || libEntry.muscleGroup) : '',
               order: order++,
               sets: sortedSets,
             });
@@ -2334,7 +2916,7 @@ function ProfileScreen({ user, onSeedLibrary, onImportStrong }) {
         </div>
         <div style={{ padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, paddingBottom: 16, borderBottom: "1.5px solid var(--cream3)" }}>
-            {user.photoURL && <img src={user.photoURL} style={{ width: 52, height: 52, borderRadius: "50%", border: "2.5px solid var(--orange)" }} alt="" />}
+            {user?.photoURL && <img src={user.photoURL} style={{ width: 52, height: 52, borderRadius: 0, border: "2.5px solid var(--yellow)" }} alt="" />}
             <div>
               <div style={{ fontFamily: "var(--font-display)", fontSize: 24, letterSpacing: "0.04em", lineHeight: 1 }}>{user.displayName?.toUpperCase()}</div>
               <div style={{ color: "var(--ink3)", fontSize: 13, marginTop: 2 }}>{user.email}</div>
@@ -2364,6 +2946,33 @@ function ProfileScreen({ user, onSeedLibrary, onImportStrong }) {
           </button>
         </div>
       </div>
+
+      {/* Volume Data Backfill */}
+      {!volumeBackfilled && !backfillResult?.updated && (
+        <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 12 }}>
+          <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 4, height: 16, background: "var(--orange)", borderRadius: 2 }} />
+            <span style={{ ...sectionLabelStyle, color: "var(--card)", fontSize: 11 }}>Volume Data Backfill</span>
+          </div>
+          <div style={{ padding: 14 }}>
+            <div style={{ fontSize: 13, color: "var(--ink3)", marginBottom: 10, lineHeight: 1.5 }}>
+              Write primary and secondary set data to all existing workouts. One-time operation — this card disappears once complete.
+            </div>
+            <button onClick={handleBackfill} disabled={backfilling}
+              style={{ ...btnStyle("primary"), width: "100%", padding: "10px", boxShadow: "0 2px 0 var(--red)" }}>
+              {backfilling ? "Backfilling… (may take a moment)" : "Backfill Volume Data"}
+            </button>
+            {backfillResult?.error && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--red)" }}>Error: {backfillResult.error}</div>
+            )}
+          </div>
+        </div>
+      )}
+      {backfillResult?.updated > 0 && (
+        <div style={{ background: "var(--card)", border: "1.5px solid var(--green)", borderRadius: 4, padding: "12px 14px", marginBottom: 12, fontSize: 13, color: "var(--green)" }}>
+          ✓ Backfill complete — {backfillResult.updated} exercises updated, {backfillResult.skipped} already had data
+        </div>
+      )}
 
       {/* Strong import */}
       <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
@@ -2405,20 +3014,27 @@ function ProfileScreen({ user, onSeedLibrary, onImportStrong }) {
           )}
         </div>
       </div>
+
+      {/* Bug Reports Viewer */}
+      <BugReportsViewer uid={user.uid} />
+
     </div>
   );
 }
 
+
 function AnalyticsScreen({ uid }) {
   const REPORTS = [
-    { id: "sets",    label: "Sets Per Week",    desc: "Total sets by muscle group per week" },
-    { id: "volume",  label: "Volume Per Week",  desc: "Total volume with high-intensity portion (≥75% e1RM) stacked, plus hi% line" },
+    { id: "sets",    label: "Sets Per Week",    desc: "Total sets by muscle group per week — primary sets (orange) + secondary fractional credits (blue)" },
+    { id: "volume",  label: "Volume Per Week",  desc: "Total volume with high-intensity portion (≥75% e1RM) stacked, plus hi% line — primary sets only" },
+    { id: "time",    label: "Time Per Week",    desc: "Hours spent per week split between lifting (orange) and cardio (teal) — stacked bar chart" },
   ];
 
   const [report, setReport]         = useState(null); // null = not yet run
   const [selectedReport, setSelectedReport] = useState("sets");
   const [running, setRunning]       = useState(false);
   const [allData, setAllData]       = useState(null); // loaded once, reused across reports
+  const [allTimeData, setAllTimeData] = useState(null); // loaded once for time report
   const [muscleGroup, setMuscleGroup] = useState("All");
   const [range, setRange]           = useState("26");
 
@@ -2437,38 +3053,34 @@ function AnalyticsScreen({ uid }) {
           for (const eDoc of eSnap.docs) {
             const ex = eDoc.data();
             if (!ex.muscleGroup) continue;
-            const validSets = (ex.sets || []).filter(s => s.reps && s.reps !== "0");
+            const validSets = (ex.sets || []).filter(s => effectiveReps(s) > 0);
             if (!validSets.length) continue;
 
-            // High-intensity volume: count reps × weight only for reps where
-            // effective % 1RM ≥ 75%. As fatigue accumulates within a set, each
-            // successive rep is at a higher % of 1RM. For rep N of a set:
-            //   reps_remaining = (total_reps - N) + RIR
-            //   effective_e1RM = weight × (1 + reps_remaining / 30)  [Epley]
-            //   effective_pct  = weight / effective_e1RM
-            // If effective_pct ≥ 0.75, that rep counts toward hiVolume.
-            const HI_THRESHOLD = 0.75;
-            let hiVolume = 0;
-            for (const s of validSets) {
-              const reps = Math.round(parseFloat(s.reps) || 0);
-              const weight = parseFloat(s.weight) || 0;
-              const rir = s.rir !== "" && s.rir !== null && s.rir !== undefined ? parseFloat(s.rir) : 4;
-              if (weight > 0 && reps > 0) {
-                for (let n = 1; n <= reps; n++) {
-                  const repsRemaining = (reps - n) + rir;
-                  const effectiveE1rm = weight * (1 + repsRemaining / 30);
-                  const effectivePct = weight / effectiveE1rm;
-                  if (effectivePct >= HI_THRESHOLD) hiVolume += weight;
-                }
-              }
-            }
+            const { hiVol: hiVolume } = computeSetVolumes(validSets);
+            // Use pre-computed fractional data if available, fall back to raw count
+            const primarySets = ex.primarySets != null ? ex.primarySets : validSets.length;
+            const secondarySets = ex.secondarySets || {};
             rows.push({
               date: wDate,
-              muscleGroup: ex.muscleGroup,
-              sets: validSets.length,
-              volume: validSets.reduce((sum, s) => sum + (parseFloat(s.reps) || 0) * (parseFloat(s.weight) || 0), 0),
+              muscleGroup: ex.primaryGroup || ex.muscleGroup,
+              sets: primarySets,
+              secondarySets,
+              volume: validSets.reduce((sum, s) => sum + effectiveReps(s) * (parseFloat(s.weight) || 0), 0),
               hiVolume,
             });
+            // Also push secondary set credits as separate rows for the sets chart
+            for (const [sg, credit] of Object.entries(secondarySets)) {
+              rows.push({
+                date: wDate,
+                muscleGroup: sg,
+                sets: 0,           // primary contribution is 0 for secondary rows
+                secondarySets: {}, // avoid double-counting
+                secondaryCredit: credit,
+                volume: 0,
+                hiVolume: 0,
+                isSecondary: true,
+              });
+            }
           }
           return rows;
         })
@@ -2482,12 +3094,49 @@ function AnalyticsScreen({ uid }) {
     }
   }
 
+  // Load per-workout time data: one row per workout with cardio and non-cardio seconds
+  async function loadTimeData() {
+    setRunning(true);
+    try {
+      const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "asc")));
+      const results = await Promise.all(
+        wSnap.docs.map(async wDoc => {
+          const wData = wDoc.data();
+          if (!wData.date) return null;
+          const totalSec = wData.totalSeconds || 0;
+          const eSnap = await getDocs(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
+          let cardioSec = 0;
+          for (const eDoc of eSnap.docs) {
+            const ex = eDoc.data();
+            if (ex.muscleGroup === "Cardio" && ex.durationSec > 0) {
+              cardioSec += ex.durationSec;
+            }
+          }
+          const nonCardioSec = Math.max(0, totalSec - cardioSec);
+          return { date: wData.date, cardioSec, nonCardioSec };
+        })
+      );
+      const rows = results.filter(Boolean);
+      setAllTimeData(rows);
+      return rows;
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  }
+
   async function runReport() {
     setRunning(true);
-    let data = allData;
-    if (!data) data = await loadData();
-    console.log("Report data rows:", data?.length);
-    setReport({ type: selectedReport, data: data || [] });
+
+    if (selectedReport === "time") {
+      let data = allTimeData;
+      if (!data) data = await loadTimeData();
+      setReport({ type: "time", data: data || [] });
+    } else {
+      let data = allData;
+      if (!data) data = await loadData();
+      setReport({ type: selectedReport, data: data || [] });
+    }
     setRunning(false);
   }
 
@@ -2510,7 +3159,6 @@ function AnalyticsScreen({ uid }) {
   const chartData = useMemo(() => {
     if (!report?.data) return [];
     const isVolume = report.type === "volume";
-    const metric = isVolume ? "volume" : "sets";
     const filtered = muscleGroup === "All"
       ? report.data
       : report.data.filter(r => r.muscleGroup === muscleGroup);
@@ -2528,19 +3176,38 @@ function AnalyticsScreen({ uid }) {
       startWeek = weekStart(d.toISOString().slice(0, 10));
     }
 
-    const volMap = new Map();
+    const primaryMap = new Map();
+    const secondaryMap = new Map();
     const hiMap = new Map();
     for (const row of filtered) {
       const ws = weekStart(row.date);
       if (ws < startWeek) continue;
-      volMap.set(ws, (volMap.get(ws) || 0) + row[metric]);
-      if (isVolume) hiMap.set(ws, (hiMap.get(ws) || 0) + (row.hiVolume || 0));
+      if (isVolume) {
+        // Volume report: primary sets only
+        primaryMap.set(ws, (primaryMap.get(ws) || 0) + (row.isSecondary ? 0 : row.volume));
+        hiMap.set(ws, (hiMap.get(ws) || 0) + (row.isSecondary ? 0 : row.hiVolume || 0));
+      } else {
+        // Sets report: primary + secondary separately
+        if (row.isSecondary) {
+          secondaryMap.set(ws, Math.round(((secondaryMap.get(ws) || 0) + (row.secondaryCredit || 0)) * 10) / 10);
+        } else {
+          primaryMap.set(ws, (primaryMap.get(ws) || 0) + row.sets);
+        }
+      }
     }
 
     const weeks = [];
     let cur = startWeek;
     while (cur <= thisWeek) {
-      const entry = { week: cur, value: volMap.get(cur) || 0, label: formatWeekLabel(cur) };
+      const primary = primaryMap.get(cur) || 0;
+      const secondary = isVolume ? 0 : (secondaryMap.get(cur) || 0);
+      const entry = {
+        week: cur,
+        value: isVolume ? primary : primary + secondary,
+        primary,
+        secondary,
+        label: formatWeekLabel(cur),
+      };
       if (isVolume) entry.hi = hiMap.get(cur) || 0;
       weeks.push(entry);
       cur = addWeeks(cur, 1);
@@ -2553,7 +3220,56 @@ function AnalyticsScreen({ uid }) {
     return ["All", ...[...new Set(report.data.map(r => r.muscleGroup))].sort()];
   }, [report]);
 
+  function formatHM(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  }
+
+  const timeChartData = useMemo(() => {
+    if (report?.type !== "time" || !report.data?.length) return [];
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const thisWeek = weekStart(todayStr);
+    let startWeek;
+    if (range === "all") {
+      startWeek = weekStart(report.data[0].date);
+    } else {
+      const d = new Date(today);
+      d.setDate(d.getDate() - parseInt(range) * 7);
+      startWeek = weekStart(d.toISOString().slice(0, 10));
+    }
+    const cardioMap = new Map();
+    const nonCardioMap = new Map();
+    for (const row of report.data) {
+      const ws = weekStart(row.date);
+      if (ws < startWeek) continue;
+      cardioMap.set(ws, (cardioMap.get(ws) || 0) + row.cardioSec);
+      nonCardioMap.set(ws, (nonCardioMap.get(ws) || 0) + row.nonCardioSec);
+    }
+    const weeks = [];
+    let cur = startWeek;
+    while (cur <= thisWeek) {
+      const cardio = cardioMap.get(cur) || 0;
+      const nonCardio = nonCardioMap.get(cur) || 0;
+      weeks.push({ week: cur, label: formatWeekLabel(cur), cardio, nonCardio, value: cardio + nonCardio });
+      cur = addWeeks(cur, 1);
+    }
+    return weeks;
+  }, [report, range]);
+
   const stats = useMemo(() => {
+    if (report?.type === "time") {
+      if (!timeChartData.length) return null;
+      const nonZero = timeChartData.filter(d => d.value > 0);
+      if (!nonZero.length) return null;
+      const totalSec = nonZero.reduce((s, d) => s + d.value, 0);
+      const avg = formatHM(Math.round(totalSec / timeChartData.length));
+      const peak = formatHM(Math.max(...nonZero.map(d => d.value)));
+      return { avg, peak, weeks: nonZero.length };
+    }
     if (!chartData.length) return null;
     const nonZero = chartData.filter(d => d.value > 0);
     if (!nonZero.length) return null;
@@ -2562,7 +3278,7 @@ function AnalyticsScreen({ uid }) {
     const avg = (total / chartData.length).toFixed(isVol ? 0 : 1);
     const peak = Math.max(...nonZero.map(d => d.value));
     return { avg, peak: isVol ? Math.round(peak).toLocaleString() : peak, weeks: nonZero.length };
-  }, [chartData, report]);
+  }, [chartData, timeChartData, report]);
 
   function formatValue(v) {
     if (report?.type === "volume") return Math.round(v).toLocaleString();
@@ -2573,6 +3289,7 @@ function AnalyticsScreen({ uid }) {
     const containerRef = useRef(null);
     const [width, setWidth] = useState(340);
     const [tooltip, setTooltip] = useState(null);
+    const isSets = report?.type === "sets";
 
     useEffect(() => {
       if (!containerRef.current) return;
@@ -2602,7 +3319,7 @@ function AnalyticsScreen({ uid }) {
     function py(v) { return padT + chartH - (v / yMax) * chartH; }
     function bh(v) { return (v / yMax) * chartH; }
 
-    // Linear regression trend line
+    // Linear regression trend line (on total value)
     const xs = data.map((_, i) => i);
     const ys = data.map(d => d.value);
     const mx = xs.reduce((a, b) => a + b, 0) / n;
@@ -2627,10 +3344,25 @@ function AnalyticsScreen({ uid }) {
       return v;
     }
 
+    // Legend for stacked sets chart
+    const legend = isSets ? (
+      <div style={{ display: "flex", gap: 14, marginBottom: 8, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--orange)" }} />
+          <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.06em" }}>PRIMARY</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: "#4a90d9" }} />
+          <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.06em" }}>SECONDARY</span>
+        </div>
+      </div>
+    ) : null;
+
     return (
       <div ref={containerRef} style={{ width: "100%" }}>
-        {showTrend && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          {isSets ? legend : <div />}
+          {showTrend && (
             <span style={{
               fontSize: 11, fontFamily: "var(--font-label)", fontWeight: 700,
               letterSpacing: "0.08em", textTransform: "uppercase",
@@ -2640,8 +3372,8 @@ function AnalyticsScreen({ uid }) {
             }}>
               {trendArrow} {trendLabel}
             </span>
-          </div>
-        )}
+          )}
+        </div>
         <svg width={W} height={H} style={{ display: "block", width: "100%", fontFamily: "var(--font-label)" }}
           onMouseLeave={() => setTooltip(null)} onTouchEnd={() => setTimeout(() => setTooltip(null), 1800)}>
 
@@ -2653,15 +3385,26 @@ function AnalyticsScreen({ uid }) {
           ))}
 
           {data.map((d, i) => {
-            const h = bh(d.value);
             const isHovered = tooltip?.i === i;
+            const primary = d.primary ?? d.value;
+            const secondary = d.secondary ?? 0;
+            const hPrimary = bh(primary);
+            const hSecondary = bh(secondary);
+            const hTotal = bh(d.value);
             return (
               <g key={i} onMouseEnter={() => setTooltip({ i, d })} onTouchStart={() => setTooltip({ i, d })}>
                 <rect x={bx(i) - slotW / 2} y={padT} width={slotW} height={chartH} fill="transparent" />
-                {h > 0 && (
-                  <rect x={bx(i) - barW / 2} y={py(d.value)} width={barW} height={h} rx={2}
+                {/* Primary sets — orange, bottom of stack */}
+                {hPrimary > 0 && (
+                  <rect x={bx(i) - barW / 2} y={py(primary)} width={barW} height={hPrimary} rx={2}
                     fill={isHovered ? "var(--orange2)" : "var(--orange)"}
                     opacity={isHovered ? 1 : 0.85} />
+                )}
+                {/* Secondary sets — blue, stacked on top */}
+                {isSets && hSecondary > 0 && (
+                  <rect x={bx(i) - barW / 2} y={py(d.value)} width={barW} height={hSecondary} rx={2}
+                    fill="#4a90d9"
+                    opacity={isHovered ? 1 : 0.75} />
                 )}
               </g>
             );
@@ -2677,10 +3420,15 @@ function AnalyticsScreen({ uid }) {
 
           {tooltip && (() => {
             const x = bx(tooltip.i);
-            const y = py(tooltip.d.value) - 6;
+            const d = tooltip.d;
+            const y = py(d.value) - 6;
             const flip = x > W * 0.65;
-            const label = `${formatValue(tooltip.d.value)} · ${tooltip.d.label}`;
-            const boxW = Math.min(label.length * 7 + 16, 150);
+            const primary = d.primary ?? d.value;
+            const secondary = d.secondary ?? 0;
+            const label = isSets && secondary > 0
+              ? `${primary}+${secondary} · ${d.label}`
+              : `${formatValue(d.value)} · ${d.label}`;
+            const boxW = Math.min(label.length * 7 + 16, 160);
             const tx = flip ? x - boxW - 4 : x + 4;
             return (
               <g>
@@ -2889,10 +3637,171 @@ function AnalyticsScreen({ uid }) {
     );
   }
 
+  function TimeStackedBarChart({ data }) {
+    const containerRef = useRef(null);
+    const [width, setWidth] = useState(340);
+    const [tooltip, setTooltip] = useState(null);
+
+    useEffect(() => {
+      if (!containerRef.current) return;
+      const obs = new ResizeObserver(entries => setWidth(entries[0].contentRect.width || 340));
+      obs.observe(containerRef.current);
+      return () => obs.disconnect();
+    }, []);
+
+    if (!data.length || data.every(d => d.value === 0)) return (
+      <div style={{ padding: 32, textAlign: "center", color: "var(--ink3)", fontSize: 14 }}>
+        No workout time recorded in this period.
+      </div>
+    );
+
+    const W = width, H = 260, padL = 48, padR = 12, padT = 20, padB = 40;
+    const chartW = W - padL - padR;
+    const chartH = H - padT - padB;
+    const n = data.length;
+    const maxVal = Math.max(...data.map(d => d.value), 1);
+    // Round up to nearest 30 minutes in seconds
+    const yMaxSec = Math.ceil(maxVal / 1800) * 1800 || 3600;
+    const slotW = chartW / n;
+    const barW = Math.max(2, Math.min(28, slotW * 0.65));
+
+    function bx(i) { return padL + i * slotW + slotW / 2; }
+    function py(v) { return padT + chartH - (v / yMaxSec) * chartH; }
+    function bh(v) { return (v / yMaxSec) * chartH; }
+
+    // Y-axis ticks in hours
+    const hourTicks = [];
+    for (let s = 0; s <= yMaxSec; s += 3600) hourTicks.push(s);
+    if (!hourTicks.includes(yMaxSec)) hourTicks.push(yMaxSec);
+
+    // Trend line on total value
+    const xs = data.map((_, i) => i);
+    const ys = data.map(d => d.value);
+    const mx = xs.reduce((a, b) => a + b, 0) / n;
+    const my = ys.reduce((a, b) => a + b, 0) / n;
+    const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+    const den = xs.reduce((s, x) => s + (x - mx) ** 2, 0);
+    const slope = den !== 0 ? num / den : 0;
+    const intercept = my - slope * mx;
+    const showTrend = data.filter(d => d.value > 0).length >= 3;
+    const ty0 = Math.max(0, Math.min(yMaxSec, intercept));
+    const ty1 = Math.max(0, Math.min(yMaxSec, slope * (n - 1) + intercept));
+    const rising = slope > 30; // > 30 seconds per week
+    const falling = slope < -30;
+    const trendColor = rising ? "var(--green)" : falling ? "var(--red)" : "var(--ink3)";
+    const trendLabel = rising ? "Trending Up" : falling ? "Trending Down" : "Flat";
+    const trendArrow = rising ? "▲" : falling ? "▼" : "—";
+
+    const labelEvery = n <= 12 ? 1 : n <= 26 ? 2 : Math.ceil(n / 12);
+
+    const legend = (
+      <div style={{ display: "flex", gap: 14, marginBottom: 8, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--orange)" }} />
+          <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.06em" }}>LIFTING</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: "#2cb5a0" }} />
+          <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.06em" }}>CARDIO</span>
+        </div>
+      </div>
+    );
+
+    return (
+      <div ref={containerRef} style={{ width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          {legend}
+          {showTrend && (
+            <span style={{
+              fontSize: 11, fontFamily: "var(--font-label)", fontWeight: 700,
+              letterSpacing: "0.08em", textTransform: "uppercase",
+              color: trendColor,
+              background: rising ? "rgba(26,122,58,0.10)" : falling ? "rgba(192,37,26,0.10)" : "rgba(0,0,0,0.06)",
+              padding: "3px 8px", borderRadius: 3,
+            }}>
+              {trendArrow} {trendLabel}
+            </span>
+          )}
+        </div>
+        <svg width={W} height={H} style={{ display: "block", width: "100%", fontFamily: "var(--font-label)" }}
+          onMouseLeave={() => setTooltip(null)} onTouchEnd={() => setTimeout(() => setTooltip(null), 1800)}>
+
+          {hourTicks.map(v => (
+            <g key={v}>
+              <line x1={padL} x2={W - padR} y1={py(v)} y2={py(v)} stroke="var(--cream3)" strokeWidth={1} />
+              <text x={padL - 4} y={py(v) + 4} textAnchor="end" fill="var(--ink4)" fontSize={9}>
+                {v === 0 ? "0" : `${v / 3600}h`}
+              </text>
+            </g>
+          ))}
+
+          {data.map((d, i) => {
+            const isHovered = tooltip?.i === i;
+            const hLifting = bh(d.nonCardio);
+            const hCardio = bh(d.cardio);
+            const yLifting = py(d.nonCardio);
+            const yCardio = py(d.value); // stacked on top of lifting
+            return (
+              <g key={i} onMouseEnter={() => setTooltip({ i, d })} onTouchStart={() => setTooltip({ i, d })}>
+                <rect x={bx(i) - slotW / 2} y={padT} width={slotW} height={chartH} fill="transparent" />
+                {hLifting > 0 && (
+                  <rect x={bx(i) - barW / 2} y={yLifting} width={barW} height={hLifting} rx={2}
+                    fill={isHovered ? "var(--orange2)" : "var(--orange)"} opacity={isHovered ? 1 : 0.85} />
+                )}
+                {hCardio > 0 && (
+                  <rect x={bx(i) - barW / 2} y={yCardio} width={barW} height={hCardio} rx={2}
+                    fill="#2cb5a0" opacity={isHovered ? 1 : 0.8} />
+                )}
+              </g>
+            );
+          })}
+
+          {showTrend && (
+            <line
+              x1={bx(0)} y1={padT + chartH - (ty0 / yMaxSec) * chartH}
+              x2={bx(n - 1)} y2={padT + chartH - (ty1 / yMaxSec) * chartH}
+              stroke={trendColor} strokeWidth={2.5} strokeDasharray="6 3"
+              strokeLinecap="round" opacity={0.9} />
+          )}
+
+          {tooltip && (() => {
+            const x = bx(tooltip.i);
+            const d = tooltip.d;
+            const flip = x > W * 0.65;
+            const liftLine = d.nonCardio > 0 ? `${formatHM(d.nonCardio)} lifting` : null;
+            const cardioLine = d.cardio > 0 ? `${formatHM(d.cardio)} cardio` : null;
+            const lines = [d.label, liftLine, cardioLine].filter(Boolean);
+            const boxW = 120;
+            const boxH = lines.length * 14 + 10;
+            const tx = flip ? x - boxW - 4 : x + 4;
+            const ty = py(d.value) - boxH - 4;
+            return (
+              <g>
+                <rect x={tx} y={ty} width={boxW} height={boxH} rx={3} fill="var(--black)" opacity={0.9} />
+                {lines.map((line, li) => (
+                  <text key={li} x={tx + boxW / 2} y={ty + 14 + li * 13} textAnchor="middle"
+                    fill={li === 1 && d.nonCardio > 0 ? "var(--orange)" : li === 2 || (li === 1 && d.nonCardio === 0) ? "#2cb5a0" : "var(--ink4)"}
+                    fontSize={10} fontWeight={li === 0 ? 400 : 700}>{line}</text>
+                ))}
+              </g>
+            );
+          })()}
+
+          {data.map((d, i) => i % labelEvery === 0 && (
+            <text key={i} x={bx(i)} y={H - 4} textAnchor="middle" fill="var(--ink4)" fontSize={9}>{d.label}</text>
+          ))}
+        </svg>
+      </div>
+    );
+  }
+
   const isVolume = report?.type === "volume";
-  const statLabels = isVolume
-    ? ["Avg Vol/Wk", "Peak Week", "Active Weeks"]
-    : ["Avg Sets/Wk", "Peak Week", "Active Weeks"];
+  const isTime = report?.type === "time";
+  const statLabels = isTime
+    ? ["Avg Time/Wk", "Peak Week", "Active Weeks"]
+    : isVolume
+      ? ["Avg Vol/Wk", "Peak Week", "Active Weeks"]
+      : ["Avg Sets/Wk", "Peak Week", "Active Weeks"];
 
   return (
     <div style={{ padding: "16px 16px 32px" }}>
@@ -2931,14 +3840,16 @@ function AnalyticsScreen({ uid }) {
             </span>
           </div>
           <div style={{ padding: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-              <div>
-                <label style={{ ...labelStyle, marginBottom: 4 }}>Muscle Group</label>
-                <select value={muscleGroup} onChange={e => setMuscleGroup(e.target.value)}
-                  style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
-                  {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: isTime ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
+              {!isTime && (
+                <div>
+                  <label style={{ ...labelStyle, marginBottom: 4 }}>Muscle Group</label>
+                  <select value={muscleGroup} onChange={e => setMuscleGroup(e.target.value)}
+                    style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+                    {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label style={{ ...labelStyle, marginBottom: 4 }}>Period</label>
                 <select value={range} onChange={e => setRange(e.target.value)}
@@ -2951,7 +3862,13 @@ function AnalyticsScreen({ uid }) {
                 </select>
               </div>
             </div>
-            {report.type === "volume" ? <VolumeLineChart data={chartData} /> : <BarChart data={chartData} />}
+            {isTime ? (
+              <TimeStackedBarChart data={timeChartData} />
+            ) : report.type === "volume" ? (
+              <VolumeLineChart data={chartData} />
+            ) : (
+              <BarChart data={chartData} />
+            )}
             {stats && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
                 {[stats.avg, stats.peak, stats.weeks].map((value, i) => (
@@ -2985,7 +3902,7 @@ export default function App() {
     setLogging(true);
   }
   const [library, setLibrary] = useState({
-    locations: [], workoutTypes: ["Hypertrophy", "Strength", "Power", "Cardio", "Recovery"],
+    locations: [], workoutTypes: DEFAULT_WORKOUT_TYPES,
     exerciseGroups: ["Push", "Pull", "Legs", "Upper", "Lower", "Full Body"], exercises: []
   });
   const [restPrefs, setRestPrefs] = useState({});
@@ -2996,22 +3913,39 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const ref = doc(db, "users", user.uid, "meta", "library");
-    const unsub = onSnapshot(ref, snap => {
+    const unsub = onSnapshot(ref, async snap => {
       if (snap.exists()) {
         const data = snap.data();
-        setLibrary(prev => ({ ...prev, ...data }));
+        // ── Existing user migration (runs once) ──────────────────────────────
+        if (!data.libraryMigrated) {
+          const exerciseNames = EXERCISE_LIBRARY.map(e => e.name);
+          const existing = data.exercises || [];
+          const merged = [...new Set([...exerciseNames, ...existing])];
+          const migrationData = {
+            exercises: merged,
+            workoutTypes: DEFAULT_WORKOUT_TYPES,
+            muscleGroupMappings: MUSCLE_GROUP_MAPPINGS,
+            volumeLandmarks: VOLUME_LANDMARKS,
+            libraryMigrated: true,
+          };
+          setDoc(ref, migrationData, { merge: true }).catch(console.error);
+          setLibrary(prev => ({ ...prev, ...data, ...migrationData }));
+        } else {
+          setLibrary(prev => ({ ...prev, ...data }));
+        }
         if (data.restPrefs) setRestPrefs(data.restPrefs);
       } else {
-        // First login — seed the exercise library
+        // ── New user seeding (first login) ───────────────────────────────────
         const exerciseNames = EXERCISE_LIBRARY.map(e => e.name);
-        const muscleGroupMap = Object.fromEntries(EXERCISE_LIBRARY.map(e => [e.name, e.muscleGroup]));
         const seedData = {
           exercises: exerciseNames,
-          muscleGroups: muscleGroupMap,
+          muscleGroupMappings: MUSCLE_GROUP_MAPPINGS,
+          volumeLandmarks: VOLUME_LANDMARKS,
           locations: [],
-          workoutTypes: ["Hypertrophy", "Strength", "Power", "Cardio", "Recovery"],
+          workoutTypes: DEFAULT_WORKOUT_TYPES,
           exerciseGroups: ["Push", "Pull", "Legs", "Upper", "Lower", "Full Body"],
           restPrefs: {},
+          libraryMigrated: true,
         };
         setDoc(ref, seedData).catch(console.error);
         setLibrary(prev => ({ ...prev, ...seedData }));
@@ -3031,26 +3965,39 @@ export default function App() {
 
   const seedLibrary = useCallback(async () => {
     if (!user) return;
-    const exerciseNames = EXERCISE_LIBRARY.map(e => e.name);
     const ref = doc(db, "users", user.uid, "meta", "library");
-    // Merge with existing — don't overwrite custom exercises
+    const exerciseNames = EXERCISE_LIBRARY.map(e => e.name);
     setLibrary(prev => {
       const existing = prev.exercises || [];
       const merged = [...new Set([...exerciseNames, ...existing])];
-      const updated = { ...prev, exercises: merged };
-      setDoc(ref, { exercises: merged }, { merge: true }).catch(console.error);
+      const updated = { ...prev, exercises: merged, muscleGroupMappings: MUSCLE_GROUP_MAPPINGS };
+      setDoc(ref, { exercises: merged, muscleGroupMappings: MUSCLE_GROUP_MAPPINGS }, { merge: true }).catch(console.error);
       return updated;
     });
   }, [user]);
 
-  const addToLibrary = useCallback(async (key, value) => {
+  const addToLibrary = useCallback(async (key, value, muscleGroup) => {
     if (!user || !value || !value.trim()) return;
     const trimmed = value.trim();
     setLibrary(prev => {
       const list = prev[key] || [];
-      if (list.map(i => i.toLowerCase()).includes(trimmed.toLowerCase())) return prev;
-      const updated = { ...prev, [key]: [...list, trimmed] };
-      setDoc(doc(db, "users", user.uid, "meta", "library"), { [key]: updated[key] }, { merge: true }).catch(console.error);
+      const alreadyExists = list.map(i => i.toLowerCase()).includes(trimmed.toLowerCase());
+      const firestoreUpdate = {};
+      let updated = prev;
+
+      if (!alreadyExists) {
+        updated = { ...prev, [key]: [...list, trimmed] };
+        firestoreUpdate[key] = updated[key];
+      }
+
+      if (key === "exercises" && muscleGroup && !prev.muscleGroupMappings?.[trimmed]) {
+        const updatedMappings = { ...(prev.muscleGroupMappings || {}), [trimmed]: { primaryGroup: muscleGroup, secondaryGroups: {} } };
+        updated = { ...updated, muscleGroupMappings: updatedMappings };
+        firestoreUpdate.muscleGroupMappings = updatedMappings;
+      }
+
+      if (Object.keys(firestoreUpdate).length === 0) return prev;
+      setDoc(doc(db, "users", user.uid, "meta", "library"), firestoreUpdate, { merge: true }).catch(console.error);
       return updated;
     });
   }, [user]);
@@ -3066,7 +4013,7 @@ export default function App() {
 
   if (user === undefined) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream)" }}>
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 36, color: "var(--orange)", letterSpacing: "0.06em", animation: "pulse 1.5s infinite" }}>FITTRACKR</div>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 46, color: "var(--ink)", letterSpacing: "0.04em", animation: "pulse 1.5s infinite" }}>FITTRACKR</div>
     </div>
   );
 
@@ -3082,22 +4029,32 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--cream)", paddingBottom: 70 }}>
-      <div style={{ background: "var(--card)", borderBottom: "1.5px solid var(--border)" }}>
-        <StripeBar height={5} />
-        <div style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: "var(--cream)", borderBottom: "2.5px solid var(--ink)" }}>
+        <div style={{ padding: "16px 18px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, color: "var(--orange)", letterSpacing: "0.04em", lineHeight: 1, textShadow: "1px 1px 0 var(--red)" }}>FITTRACKR</h1>
-            <div style={{ ...sectionLabelStyle, fontSize: 10, color: "var(--ink3)", marginTop: 1 }}>
+            <div style={{ fontSize: 8, letterSpacing: "0.32em", color: "var(--ink3)", textTransform: "uppercase", marginBottom: 6, fontWeight: 300, fontFamily: "var(--font-label)" }}>Workout Tracker</div>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 46, color: "var(--ink)", letterSpacing: "0.04em", lineHeight: 0.85 }}>FIT<br/>TRACKR</h1>
+            <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "var(--ink3)", marginTop: 6, fontWeight: 300, fontFamily: "var(--font-label)", textTransform: "uppercase" }}>
               {tab === "history" ? "Training History" : tab === "analytics" ? "Analytics" : tab === "templates" ? "Templates" : "Profile"}
             </div>
           </div>
-          {user.photoURL && <img src={user.photoURL} style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid var(--orange)" }} alt="" />}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {/* Moholy-Nagy concentric circle motif */}
+            <div style={{ position: "relative", width: 64, height: 64, marginTop: 4 }}>
+              <div style={{ position: "absolute", width: 64, height: 64, border: "2.5px solid var(--ink)", borderRadius: "50%" }} />
+              <div style={{ position: "absolute", width: 42, height: 42, top: 11, left: 11, background: "var(--yellow)", borderRadius: "50%" }} />
+              <div style={{ position: "absolute", width: 21, height: 21, top: 21.5, left: 21.5, background: "var(--ink)", borderRadius: "50%" }} />
+              <div style={{ position: "absolute", width: 7, height: 7, top: 28.5, left: 28.5, background: "var(--yellow)", borderRadius: "50%" }} />
+            </div>
+            {user?.photoURL && <img src={user.photoURL} style={{ width: 32, height: 32, borderRadius: 0, border: "2px solid var(--yellow)" }} alt="" />}
+          </div>
         </div>
       </div>
       {tab === "history" && <HistoryScreen uid={user.uid} />}
       {tab === "analytics" && <AnalyticsScreen key={analyticsKey} uid={user.uid} />}
       {tab === "templates" && <TemplatesScreen uid={user.uid} templates={templates} onStartWorkout={t => { startFromTemplate(t); }} />}
-      {tab === "profile" && <ProfileScreen user={user} onSeedLibrary={seedLibrary} />}
+      {tab === "profile" && <ProfileScreen user={user} onSeedLibrary={seedLibrary} volumeBackfilled={!!library.volumeDataBackfilled} />}
+      <BugReportButton uid={user.uid} currentTab={tab} />
       <BottomNav tab={tab} setTab={t => { if (t === "analytics") setAnalyticsKey(k => k + 1); setTab(t); }} onNewWorkout={() => setLogging(true)} />
     </div>
   );
