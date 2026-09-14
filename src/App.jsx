@@ -1601,33 +1601,6 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
       <DeloadBanner uid={uid} />
       <div style={{ padding: "14px 14px 0" }}>
 
-        {/* ── Pre-workout Readiness ── */}
-        <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "visible", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-          <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
-            onClick={() => readinessComplete && setReadinessDone(p => !p)}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 4, height: 16, background: "var(--orange)", borderRadius: 2 }} />
-              <span style={{ ...sectionLabelStyle, color: "var(--card)", fontSize: 11 }}>Pre-Workout Readiness</span>
-            </div>
-            {readinessComplete && (
-              <span style={{ color: "var(--orange)", fontSize: 12, fontFamily: "var(--font-label)", letterSpacing: "0.08em" }}>
-                {readinessDone ? "▼ Edit" : `Sleep ${sleepQuality} · Energy ${energyLevel} ▲`}
-              </span>
-            )}
-          </div>
-          {!readinessDone && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
-              <ReadinessDropdown label="Sleep Quality" value={sleepQuality} onChange={setSleepQuality} />
-              <ReadinessDropdown label="Energy Level" value={energyLevel} onChange={setEnergyLevel} />
-              {readinessComplete && (
-                <button onClick={() => setReadinessDone(true)} style={{ ...btnStyle("primary"), width: "100%", padding: "10px" }}>
-                  Confirm Readiness
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
         {/* ── Session Details ── */}
         <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "visible", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
           <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -1824,13 +1797,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
             <StripeBar height={5} />
             <div style={{ padding: 24 }}>
               <h2 style={{ fontFamily: "var(--font-display)", fontSize: 28, letterSpacing: "0.04em", marginBottom: 4, color: "var(--ink)" }}>END WORKOUT?</h2>
-              <p style={{ color: "var(--ink3)", fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>Rate your session before saving.</p>
-
-              {/* Star rating */}
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ ...labelStyle, marginBottom: 10 }}>Session Rating</label>
-                <StarRating value={postRating} onChange={setPostRating} size={36} />
-              </div>
+              <p style={{ color: "var(--ink3)", fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>Save your session.</p>
 
               {/* Save as template */}
               <div style={{ marginBottom: 24, padding: 14, background: "var(--cream)", borderRadius: 4, border: "1.5px solid var(--border)" }}>
@@ -3826,7 +3793,6 @@ function AnalyticsScreen({ uid }) {
 
   return (
     <div style={{ padding: "16px 16px 32px" }}>
-      <TrainingReadinessCard uid={uid} />
       {/* Report selector card */}
       <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 12 }}>
         <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
