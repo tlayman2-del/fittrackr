@@ -3,7 +3,7 @@ import { auth, db } from "./firebase";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   doc, collection, addDoc, setDoc, deleteDoc,
-  onSnapshot, query, orderBy, serverTimestamp, getDocs, getDocsFromServer
+  onSnapshot, query, orderBy, serverTimestamp, getDocs, getDoc, getDocFromServer, getDocsFromServer
 } from "firebase/firestore";
 
 const fontLink = document.createElement("link");
@@ -303,8 +303,8 @@ function ComboBox({ value, onChange, onCommit, onSelect, options, placeholder })
   useEffect(() => { setInput(value || ""); }, [value]);
   useEffect(() => {
     function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, []);
   const filtered = options.filter(o => o.toLowerCase().includes(input.toLowerCase()));
   function handleSelect(val) {
@@ -322,7 +322,7 @@ function ComboBox({ value, onChange, onCommit, onSelect, options, placeholder })
       {open && filtered.length > 0 && (
         <div style={{ position: "absolute", top: "calc(100% + 3px)", left: 0, right: 0, background: "var(--card)", border: "1.5px solid var(--yellow)", borderRadius: 0, zIndex: 500, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.12)" }}>
           {filtered.map(opt => (
-            <div key={opt} onMouseDown={() => handleSelect(opt)}
+            <div key={opt} onPointerDown={e => { e.preventDefault(); handleSelect(opt); }}
               style={{ padding: "10px 12px", cursor: "pointer", fontSize: 14, borderBottom: "1px solid var(--cream2)", fontFamily: "var(--font-body)", color: "var(--ink)" }}
               onMouseEnter={e => e.currentTarget.style.background = "var(--cream)"}
               onMouseLeave={e => e.currentTarget.style.background = "var(--card)"}
@@ -693,6 +693,70 @@ function cleanSetForSave({ _prefilled, partials, ...s }) {
   return p > 0 ? { ...s, partials: p } : s;
 }
 
+async function updateExerciseStats(uid, exerciseList) {
+  // exerciseList: [{ name, sets: [{reps, weight, rir, ...}] }]
+  const statsRef = doc(db, "users", uid, "meta", "exerciseStats");
+  const snap = await getDoc(statsRef);
+  const stored = snap.exists() ? snap.data() : {};
+  const updates = {};
+
+  for (const { name, sets } of exerciseList) {
+    if (!name || !sets?.length) continue;
+    let bestZeroRIR = null;
+    let bestEstimated = null;
+
+    for (const set of sets) {
+      const reps = Number(set.reps);
+      const weight = Number(set.weight);
+      if (!reps || !weight || reps < 3 || reps > 12) continue;
+      const e1rm = weight * (1 + reps / 30);
+      const rir = (set.rir !== "" && set.rir != null) ? Number(set.rir) : null;
+      if (rir === 0) {
+        if (bestZeroRIR === null || e1rm > bestZeroRIR) bestZeroRIR = e1rm;
+      } else {
+        if (bestEstimated === null || e1rm > bestEstimated) bestEstimated = e1rm;
+      }
+    }
+
+    let candidate = null;
+    if (bestZeroRIR !== null) candidate = { value: bestZeroRIR, source: "0-RIR" };
+    else if (bestEstimated !== null) candidate = { value: bestEstimated, source: "estimated" };
+    if (!candidate) continue;
+
+    const current = stored[name];
+    const isNewBest = !current || candidate.value > current.bestE1RM;
+    const upgradedSource = current && candidate.source === "0-RIR" && current.bestE1RMSource === "estimated";
+    if (isNewBest || upgradedSource) {
+      updates[name] = {
+        bestE1RM: Math.round(candidate.value * 10) / 10,
+        bestE1RMSource: candidate.source,
+        bestE1RMDate: new Date().toISOString().slice(0, 10),
+        lastUpdated: serverTimestamp(),
+      };
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await setDoc(statsRef, updates, { merge: true });
+  }
+}
+
+async function backfillExerciseStats(uid) {
+  const statsRef = doc(db, "users", uid, "meta", "exerciseStats");
+  const existing = await getDoc(statsRef);
+  if (existing.exists() && Object.keys(existing.data()).length > 0) return;
+  const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "asc")));
+  const allExercises = [];
+  await Promise.all(wSnap.docs.map(async wDoc => {
+    const eSnap = await getDocs(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
+    for (const eDoc of eSnap.docs) {
+      const ex = eDoc.data();
+      if (ex.name && ex.sets?.length) allExercises.push({ name: ex.name, sets: ex.sets });
+    }
+  }));
+  if (allExercises.length > 0) await updateExerciseStats(uid, allExercises);
+}
+
 // "8", "8+3p", or "3p" for a partials-only set.
 function formatReps(set) {
   const reps = Math.round(parseFloat(set?.reps) || 0);
@@ -701,7 +765,7 @@ function formatReps(set) {
   return reps > 0 ? `${reps}+${p}p` : `${p}p`;
 }
 
-function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange, isActiveRest, onActivate, onRestDone, isCardio, onInteract, prWeightValue, showPartials }) {
+function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange, isActiveRest, onActivate, onRestDone, isCardio, onInteract, prWeightValue, showPartials, bestE1RM, isActiveRow }) {
   const fields = isCardio
     ? ["duration", "distance"]
     : ["reps", "weight", "partials", "rir"];
@@ -804,6 +868,16 @@ function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange,
       style={{ ...inputStyle, textAlign: "center", color: getColor("rir"), fontWeight: 600, fontSize: 16, padding: "8px 4px" }}
       min={0} max={10} />
   );
+  const reps = Number(set.reps);
+  const weight = Number(set.weight);
+  const reportedRIR = (set.rir !== "" && set.rir != null) ? Number(set.rir) : null;
+  let projectedRIR = null;
+  if (isActiveRow && bestE1RM && weight > 0 && reps >= 3 && reps <= 12) {
+    const predictedMaxReps = (bestE1RM / weight - 1) * 30;
+    projectedRIR = Math.max(0, Math.min(10, Math.round(predictedMaxReps - reps)));
+    if (!set._prefilled && reportedRIR !== null && projectedRIR === reportedRIR) projectedRIR = null;
+  }
+
   return (
     <div className="fade-in" style={{ marginBottom: 6 }}>
       <div style={{ display: "grid", gridTemplateColumns: showPartials ? SET_GRID_PARTIALS : SET_GRID, gap: 5, alignItems: "center" }}>
@@ -814,6 +888,12 @@ function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange,
         {rirInput}
         <button onClick={onRemove} style={{ background: "none", border: "none", color: "var(--ink4)", cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
       </div>
+      {projectedRIR !== null && (
+        <div style={{ textAlign: "right", paddingRight: 28, marginTop: 2, fontSize: 11, fontFamily: "var(--font-label)", letterSpacing: "0.04em",
+          color: (reportedRIR !== null && Math.abs(projectedRIR - reportedRIR) >= 2) ? "var(--orange)" : "var(--ink4)" }}>
+          proj. RIR {projectedRIR}
+        </div>
+      )}
       {isActiveRest && <RestTimer restSecs={defaultRestSecs} defaultRestSecs={defaultRestSecs} onRestChange={onRestChange} onDone={onRestDone} />}
     </div>
   );
@@ -823,6 +903,7 @@ function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange,
 function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAddToLibrary, isActive, paused, onSetActive, restPrefs, onRestPrefChange, activeRestKeys, onSetRestActive, onClearRestKey, activeElapsedRef, onInteract, onDragHandleTouchStart, onDragHandleMouseDown, dragMode, isDragged, onFocusNextExercise, onToggleSuperset }) {
   const [showHistory, setShowHistory] = useState(false);
   const [prWeightValue, setPrWeightValue] = useState(null);
+  const [bestE1RM, setBestE1RM] = useState(null);
   const [elapsed, setElapsed] = useState(exercise.durationSec || 0);
   const intervalRef = useRef(null);
   const startRef = useRef(null);
@@ -877,6 +958,24 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
       } catch (e) { console.error(e); }
     }
     fetchWeightPR();
+    return () => { cancelled = true; };
+  }, [exercise.name, uid]);
+
+  useEffect(() => {
+    if (!exercise.name || !uid) { setBestE1RM(null); return; }
+    let cancelled = false;
+    async function fetchE1RM() {
+      try {
+        const snap = await getDocFromServer(doc(db, "users", uid, "meta", "exerciseStats"));
+        if (!cancelled && snap.exists()) {
+          const data = snap.data()[exercise.name];
+          setBestE1RM(data?.bestE1RM ?? null);
+        } else if (!cancelled) {
+          setBestE1RM(null);
+        }
+      } catch (e) { if (!cancelled) setBestE1RM(null); }
+    }
+    fetchE1RM();
     return () => { cancelled = true; };
   }, [exercise.name, uid]);
 
@@ -1115,6 +1214,8 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
             onRestDone={() => { onClearRestKey(restKey); focusNextRepsAfterRest(i); }}
             onInteract={onInteract} prWeightValue={prWeightValue}
             showPartials={showPartials && !isCardio}
+            bestE1RM={bestE1RM}
+            isActiveRow={true}
             />
         );
       })}
@@ -1558,6 +1659,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
         });
         onAddToLibrary("exercises", ex.name, ex.muscleGroup);
       }
+      await updateExerciseStats(uid, exerciseDataList.map(({ ex, cleanSets }) => ({ name: ex.name, sets: cleanSets })));
       clearWorkoutDraft();
       const stats = computeSessionStats(exercises);
       setSessionStats(stats);
@@ -1572,6 +1674,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
   const activeBugButton = <BugReportButton uid={uid} currentTab="active-workout" />;
 
   const metaComplete = workout.date && workout.location && workout.workoutType && workout.exerciseGroup;
+  const metaMissing = [!workout.date && "date", !workout.location && "location", !workout.workoutType && "type", !workout.exerciseGroup && "group"].filter(Boolean);
   const readinessComplete = sleepQuality > 0 && energyLevel > 0;
 
   return (
@@ -1749,7 +1852,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
         </div>
 
         <button onClick={addExercise} disabled={!metaComplete} style={{ ...btnStyle("primary"), width: "100%", padding: "14px", fontSize: 16, opacity: metaComplete ? 1 : 0.45, boxShadow: metaComplete ? "0 3px 0 var(--ink)" : "none" }}>
-          {metaComplete ? "+ Add Exercise" : "Fill session details first"}
+          {metaComplete ? "+ Add Exercise" : `Missing: ${metaMissing.join(", ")}`}
         </button>
 
         {exercises.length > 0 && (
@@ -1911,6 +2014,10 @@ function EditWorkoutModal({ uid, workout, exercises: initialExercises, onClose, 
           { merge: true }
         );
       }
+      await updateExerciseStats(uid, exercises.map(ex => ({
+        name: ex.name,
+        sets: ex.sets.filter(s => s.reps || s.weight).map(cleanSetForSave),
+      })));
       onSaved();
       onClose();
     } catch (e) { console.error(e); alert("Error saving"); }
@@ -2681,18 +2788,166 @@ function TemplatesScreen({ uid, templates, onStartWorkout }) {
 
 
 // ── Bug Report Button ─────────────────────────────────────────────────────────
-function BottomNav({ tab, setTab, onNewWorkout }) {
-  const items = [{ id: "log", icon: "➕", label: "Log" }, { id: "history", icon: "📅", label: "History" }, { id: "templates", icon: "📋", label: "Templates" }, { id: "analytics", icon: "📊", label: "Analytics" }, { id: "profile", icon: "👤", label: "Profile" }];
+// ── Lookup Screen ─────────────────────────────────────────────────────────────
+function LookupScreen({ uid, library }) {
+  const [muscleGroup, setMuscleGroup] = useState("All");
+  const [exerciseName, setExerciseName] = useState("");
+  const [results, setResults] = useState(null); // null = not searched yet
+  const [loading, setLoading] = useState(false);
+
+  // Build exercise list filtered by muscle group using the canonical library
+  const filteredExercises = useMemo(() => {
+    const all = EXERCISE_LIBRARY.map(e => e.name).sort();
+    if (muscleGroup === "All") return all;
+    return all.filter(name => {
+      const m = MUSCLE_GROUP_MAPPINGS[name];
+      return m?.primaryGroup === muscleGroup || (m?.secondaryGroups?.[muscleGroup] != null);
+    });
+  }, [muscleGroup]);
+
+  // Auto-select first exercise when list changes
+  const effectiveExercise = filteredExercises.includes(exerciseName) ? exerciseName : (filteredExercises[0] || "");
+
+  async function search() {
+    if (!effectiveExercise) return;
+    setLoading(true);
+    setResults(null);
+    try {
+      const wSnap = await getDocsFromServer(query(collection(db, "users", uid, "workouts"), orderBy("date", "desc")));
+      const sessions = [];
+      for (const wDoc of wSnap.docs) {
+        if (sessions.length >= 10) break;
+        const wData = wDoc.data();
+        const eSnap = await getDocsFromServer(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
+        for (const eDoc of eSnap.docs) {
+          const ex = eDoc.data();
+          if (ex.name !== effectiveExercise) continue;
+          // Compute best e1RM for this session
+          let bestE1RM = null;
+          for (const set of (ex.sets || [])) {
+            const reps = Number(set.reps);
+            const weight = Number(set.weight);
+            if (reps >= 3 && reps <= 12 && weight > 0) {
+              const e1rm = weight * (1 + reps / 30);
+              if (bestE1RM === null || e1rm > bestE1RM) bestE1RM = e1rm;
+            }
+          }
+          sessions.push({
+            date: wData.date,
+            workoutType: wData.workoutType || null,
+            sets: ex.sets || [],
+            durationSec: ex.durationSec || null,
+            bestE1RM: bestE1RM ? Math.round(bestE1RM) : null,
+          });
+          break; // one exercise match per workout
+        }
+      }
+      setResults(sessions);
+    } catch (e) { console.error(e); setResults([]); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ padding: "16px 16px 32px" }}>
+      <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 12 }}>
+        <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 4, height: 16, background: "var(--orange)", borderRadius: 2 }} />
+          <span style={{ ...sectionLabelStyle, color: "var(--card)", fontSize: 11 }}>Exercise Lookup</span>
+        </div>
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <label style={{ ...labelStyle, marginBottom: 4 }}>Muscle Group</label>
+            <select value={muscleGroup} onChange={e => setMuscleGroup(e.target.value)}
+              style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+              <option value="All">All</option>
+              {MUSCLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ ...labelStyle, marginBottom: 4 }}>Exercise</label>
+            <select value={effectiveExercise} onChange={e => setExerciseName(e.target.value)}
+              style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+              {filteredExercises.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+            </select>
+          </div>
+          <button onClick={search} disabled={loading || !effectiveExercise}
+            style={{ ...btnStyle("primary"), width: "100%", padding: "11px", boxShadow: "0 2px 0 var(--red)" }}>
+            {loading ? "Searching…" : "🔍 Search"}
+          </button>
+        </div>
+      </div>
+
+      {results !== null && results.length === 0 && (
+        <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--ink3)", fontSize: 14 }}>
+          No sessions found for {effectiveExercise}.
+        </div>
+      )}
+
+      {(results || []).map((session, si) => (
+        <div key={si} style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 10 }}>
+          <div style={{ background: "var(--black)", padding: "7px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--yellow)", letterSpacing: "0.04em" }}>{session.date}</div>
+              {session.workoutType && <span style={{ fontSize: 10, color: "var(--ink4)", fontFamily: "var(--font-label)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{session.workoutType}</span>}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {session.durationSec > 0 && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-display)", letterSpacing: "0.04em" }}>⏱ {formatTime(session.durationSec)}</span>}
+              {session.bestE1RM && <span style={{ fontSize: 11, color: "var(--orange)", fontFamily: "var(--font-label)", letterSpacing: "0.04em" }}>e1RM: ~{session.bestE1RM}lb</span>}
+            </div>
+          </div>
+          <div style={{ padding: "10px 14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr", gap: 4, marginBottom: 4 }}>
+              {["", "Reps", "Weight", "RIR"].map((h, i) => (
+                <div key={i} style={{ ...labelStyle, textAlign: i > 0 ? "center" : "left", marginBottom: 0, fontSize: 10 }}>{h}</div>
+              ))}
+            </div>
+            {session.sets.filter(s => s.reps || s.weight).map((set, j) => (
+              <div key={j} style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr", gap: 4, padding: "4px 0", borderBottom: "1px solid var(--cream3)" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--ink3)" }}>{j + 1}</div>
+                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{formatReps(set) || "—"}</div>
+                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{set.weight ? <>{set.weight}<span style={{ color: "var(--ink4)", fontSize: 10 }}>lb</span></> : "—"}</div>
+                <div style={{ textAlign: "center", fontWeight: 600, fontSize: 14 }}>{set.rir !== "" && set.rir != null ? set.rir : "—"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BottomNav({ tab, setTab, onNewWorkout, logging }) {
+  const items = [
+    { id: "log",       icon: "➕", label: "Log" },
+    { id: "history",   icon: "📅", label: "History" },
+    { id: "lookup",    icon: "🔍", label: "Lookup" },
+    { id: "templates", icon: "📋", label: "Templates" },
+    { id: "analytics", icon: "📊", label: "Analytics" },
+    { id: "profile",   icon: "👤", label: "Profile" },
+  ];
+  const workoutInProgress = logging && tab !== "log";
   return (
     <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "var(--cream)", borderTop: "2.5px solid var(--ink)", zIndex: 100 }}>
-      <div style={{ display: "flex" }}>
+      <div style={{ display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
         {items.map(item => {
-          const isActive = item.id === "log" ? false : tab === item.id;
+          const isActive = item.id === "log" ? (logging && tab === "log") : tab === item.id;
+          const isLogBtn = item.id === "log";
+          function handleClick() {
+            if (isLogBtn) {
+              if (logging) setTab("log");
+              else onNewWorkout();
+            } else {
+              setTab(item.id);
+            }
+          }
           return (
-            <button key={item.id} onClick={() => item.id === "log" ? onNewWorkout() : setTab(item.id)}
-              style={{ flex: 1, padding: "10px 0", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, transition: "background 0.15s", background: isActive ? "var(--yellow)" : "transparent", borderRight: "1px solid var(--border)", color: isActive ? "var(--black)" : "var(--ink3)" }}>
+            <button key={item.id} onClick={handleClick}
+              style={{ position: "relative", flexShrink: 0, width: `${100 / items.length}%`, minWidth: 52, padding: "10px 0", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, transition: "background 0.15s", background: isActive ? "var(--yellow)" : "transparent", borderRight: "1px solid var(--border)", color: isActive ? "var(--black)" : "var(--ink3)" }}>
               <span style={{ fontSize: 17 }}>{item.icon}</span>
               <span style={{ fontSize: 8, fontWeight: isActive ? 700 : 400, letterSpacing: "0.15em", textTransform: "uppercase", fontFamily: "var(--font-label)" }}>{item.label}</span>
+              {isLogBtn && workoutInProgress && (
+                <div style={{ position: "absolute", top: 6, right: "30%", width: 7, height: 7, borderRadius: "50%", background: "var(--orange)", animation: "pulse 1.5s infinite" }} />
+              )}
             </button>
           );
         })}
@@ -3011,20 +3266,43 @@ function ProfileScreen({ user, onSeedLibrary, onImportStrong, volumeBackfilled }
 }
 
 
+// ── Analytics helpers ─────────────────────────────────────────────────────────
+
+function analyticsWeekStart(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d.toISOString().slice(0, 10);
+}
+function analyticsAddWeeks(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n * 7);
+  return d.toISOString().slice(0, 10);
+}
+function analyticsFormatWeekLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 function AnalyticsScreen({ uid }) {
-  const REPORTS = [
-    { id: "sets",    label: "Sets Per Week",    desc: "Total sets by muscle group per week — primary sets (orange) + secondary fractional credits (blue)" },
-    { id: "volume",  label: "Volume Per Week",  desc: "Total volume with high-intensity portion (≥75% e1RM) stacked, plus hi% line — primary sets only" },
-    { id: "time",    label: "Time Per Week",    desc: "Hours spent per week split between lifting (orange) and cardio (teal) — stacked bar chart" },
-  ];
 
   const [report, setReport]         = useState(null); // null = not yet run
   const [selectedReport, setSelectedReport] = useState("sets");
   const [running, setRunning]       = useState(false);
   const [allData, setAllData]       = useState(null); // loaded once, reused across reports
   const [allTimeData, setAllTimeData] = useState(null); // loaded once for time report
+  const [rirData, setRirData]       = useState(null); // loaded once for RIR report
   const [muscleGroup, setMuscleGroup] = useState("All");
   const [range, setRange]           = useState("26");
+  const [rirView, setRirView]       = useState("exercise"); // "exercise" | "ranked"
+  const [rirExercise, setRirExercise] = useState("");
+  const [expanded, setExpanded]     = useState(false);
+  const REPORTS = [
+    { id: "sets",    label: "Sets Per Week",    desc: "Total sets by muscle group per week — primary sets (orange) + secondary fractional credits (blue)" },
+    { id: "volume",  label: "Volume Per Week",  desc: "Total volume with high-intensity portion (≥75% e1RM) stacked, plus hi% line — primary sets only" },
+    { id: "time",    label: "Time Per Week",    desc: "Hours spent per week split between lifting (orange) and cardio (teal) — stacked bar chart" },
+    { id: "rir",     label: "RIR Accuracy",     desc: "Compare reported vs. calculated RIR set by set — see where your effort perception diverges from your e1RM model" },
+  ];
 
   // Load all exercise data — parallel fetching for speed
   async function loadData() {
@@ -3113,39 +3391,70 @@ function AnalyticsScreen({ uid }) {
     }
   }
 
+  async function loadRirData() {
+    try {
+      const statsSnap = await getDoc(doc(db, "users", uid, "meta", "exerciseStats"));
+      const exStats = statsSnap.exists() ? statsSnap.data() : {};
+      const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "asc")));
+      const rows = [];
+      await Promise.all(wSnap.docs.map(async wDoc => {
+        const wDate = wDoc.data().date;
+        if (!wDate) return;
+        const eSnap = await getDocs(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
+        for (const eDoc of eSnap.docs) {
+          const ex = eDoc.data();
+          if (CARDIO_MUSCLE_GROUPS.has(ex.muscleGroup) || !ex.name) continue;
+          const stat = exStats[ex.name];
+          if (!stat?.bestE1RM) continue;
+          for (const set of (ex.sets || [])) {
+            const reps = Number(set.reps);
+            const weight = Number(set.weight);
+            if (!reps || !weight || reps < 3 || reps > 12) continue;
+            const reportedRIR = (set.rir !== "" && set.rir != null) ? Number(set.rir) : null;
+            if (reportedRIR === null) continue;
+            const predictedMaxReps = (stat.bestE1RM / weight - 1) * 30;
+            const calcRIR = Math.max(0, Math.min(10, Math.round(predictedMaxReps - reps)));
+            rows.push({
+              date: wDate, exerciseName: ex.name,
+              weight, reps, reportedRIR, calcRIR,
+              discrepancy: calcRIR - reportedRIR,
+            });
+          }
+        }
+      }));
+      const result = { rows, exStats };
+      setRirData(result);
+      return result;
+    } catch (e) { console.error(e); return { rows: [], exStats: {} }; }
+  }
+
   async function runReport() {
     setRunning(true);
-
-    if (selectedReport === "time") {
-      let data = allTimeData;
-      if (!data) data = await loadTimeData();
-      setReport({ type: "time", data: data || [] });
-    } else {
-      let data = allData;
-      if (!data) data = await loadData();
-      setReport({ type: selectedReport, data: data || [] });
-    }
+    try {
+      if (selectedReport === "time") {
+        let data = allTimeData;
+        if (!data) data = await loadTimeData();
+        setReport({ type: "time", data: data || [] });
+      } else if (selectedReport === "rir") {
+        let data = rirData;
+        if (!data) data = await loadRirData();
+        setReport({ type: "rir", data: data || { rows: [], exStats: {} } });
+      } else {
+        let data = allData;
+        if (!data) data = await loadData();
+        setReport({ type: selectedReport, data: data || [] });
+      }
+    } catch (e) { console.error(e); }
     setRunning(false);
   }
 
-  function weekStart(dateStr) {
-    const d = new Date(dateStr + "T00:00:00");
-    const day = d.getDay();
-    d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-    return d.toISOString().slice(0, 10);
-  }
-  function addWeeks(dateStr, n) {
-    const d = new Date(dateStr + "T00:00:00");
-    d.setDate(d.getDate() + n * 7);
-    return d.toISOString().slice(0, 10);
-  }
-  function formatWeekLabel(dateStr) {
-    const d = new Date(dateStr + "T00:00:00");
-    return `${d.getMonth() + 1}/${d.getDate()}`;
-  }
+  const weekStart = analyticsWeekStart;
+  const addWeeks = analyticsAddWeeks;
+  const formatWeekLabel = analyticsFormatWeekLabel;
 
   const chartData = useMemo(() => {
     if (!report?.data) return [];
+    if (report.type === "rir" || report.type === "time") return [];
     const isVolume = report.type === "volume";
     const filtered = muscleGroup === "All"
       ? report.data
@@ -3204,7 +3513,7 @@ function AnalyticsScreen({ uid }) {
   }, [report, muscleGroup, range]);
 
   const availableGroups = useMemo(() => {
-    if (!report?.data) return ["All", ...MUSCLE_GROUPS];
+    if (!report?.data || report.type === "rir" || report.type === "time") return ["All", ...MUSCLE_GROUPS];
     return ["All", ...[...new Set(report.data.map(r => r.muscleGroup))].sort()];
   }, [report]);
 
@@ -3783,8 +4092,181 @@ function AnalyticsScreen({ uid }) {
     );
   }
 
+  function RIRAccuracyView({ rows, exStats }) {
+    // Apply date range filter
+    const cutoff = range === "all" ? "0000-00-00" : (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - parseInt(range) * 7);
+      return d.toISOString().slice(0, 10);
+    })();
+    const filtered = rows.filter(r => r.date >= cutoff);
+
+    // Build exercise list with ≥3 qualifying sets
+    const countByEx = {};
+    for (const r of filtered) countByEx[r.exerciseName] = (countByEx[r.exerciseName] || 0) + 1;
+    const eligibleExercises = Object.entries(countByEx).filter(([, n]) => n >= 3).map(([name]) => name).sort();
+
+    // Auto-select first exercise if none selected or current not eligible
+    const effectiveExercise = eligibleExercises.includes(rirExercise) ? rirExercise : (eligibleExercises[0] || "");
+
+    const exerciseRows = filtered.filter(r => r.exerciseName === effectiveExercise);
+    const stat = exStats[effectiveExercise];
+
+    function discrepancyColor(d) {
+      const abs = Math.abs(d);
+      if (abs <= 1) return "var(--green)";
+      if (abs === 2) return "var(--orange)";
+      return "var(--red)";
+    }
+
+    // Summary stats
+    const accurateCount = exerciseRows.filter(r => Math.abs(r.discrepancy) <= 1).length;
+    const accuratePct = exerciseRows.length > 0 ? Math.round((accurateCount / exerciseRows.length) * 100) : 0;
+    const avgDisc = exerciseRows.length > 0
+      ? exerciseRows.reduce((s, r) => s + r.discrepancy, 0) / exerciseRows.length
+      : 0;
+    const avgDiscStr = (avgDisc >= 0 ? "+" : "") + avgDisc.toFixed(1);
+
+    const toggle = (
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {["exercise", "ranked"].map(v => (
+          <button key={v} onClick={() => setRirView(v)}
+            style={{ ...btnStyle(rirView === v ? "primary" : "ghost"), padding: "6px 14px", fontSize: 12, flex: 1 }}>
+            {v === "exercise" ? "By Exercise" : "Ranked"}
+          </button>
+        ))}
+      </div>
+    );
+
+    if (rirView === "ranked") {
+      // Aggregate per exercise: min 5 qualifying sets
+      const aggMap = {};
+      for (const r of filtered) {
+        if (!aggMap[r.exerciseName]) aggMap[r.exerciseName] = { cumulative: 0, sumSigned: 0, count: 0 };
+        aggMap[r.exerciseName].cumulative += Math.abs(r.discrepancy);
+        aggMap[r.exerciseName].sumSigned  += r.discrepancy;
+        aggMap[r.exerciseName].count      += 1;
+      }
+      const ranked = Object.entries(aggMap)
+        .filter(([, a]) => a.count >= 5)
+        .map(([name, a]) => ({
+          name,
+          cumulativeDiscrepancy: a.cumulative,
+          averageDiscrepancy: a.sumSigned / a.count,
+          qualifyingSets: a.count,
+        }))
+        .sort((a, b) => b.averageDiscrepancy - a.averageDiscrepancy);
+
+      function severityColor(avgDisc) {
+        const abs = Math.abs(avgDisc);
+        if (abs < 1.5) return "var(--green)";
+        if (abs < 2.5) return "var(--orange)";
+        return "var(--red)";
+      }
+
+      return (
+        <div>
+          {toggle}
+          {ranked.length === 0 ? (
+            <div style={{ color: "var(--ink4)", fontSize: 13, textAlign: "center", padding: 24 }}>
+              No exercises with 5+ qualifying sets in this period.
+            </div>
+          ) : ranked.map((ex, i) => {
+            const color = severityColor(ex.averageDiscrepancy);
+            const avgStr = (ex.averageDiscrepancy >= 0 ? "+" : "") + ex.averageDiscrepancy.toFixed(1);
+            return (
+              <div key={ex.name} onClick={() => { setRirView("exercise"); setRirExercise(ex.name); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px",
+                  borderBottom: "1px solid var(--cream3)", cursor: "pointer" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--ink4)", width: 22, flexShrink: 0 }}>{i + 1}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--orange)", letterSpacing: "0.04em", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {ex.name.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.04em", marginTop: 2 }}>
+                    {ex.qualifyingSets} qualifying sets
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color, letterSpacing: "0.04em" }}>{avgStr}</div>
+                  <div style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.04em" }}>
+                    avg RIR diff
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (eligibleExercises.length === 0) {
+      return (
+        <div>
+          {toggle}
+          <div style={{ color: "var(--ink4)", fontSize: 13, textAlign: "center", padding: 24 }}>
+            No exercises with 3+ qualifying sets (reps 3–12, RIR logged, e1RM stored) in this period.
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {toggle}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ ...labelStyle, marginBottom: 4 }}>Exercise</label>
+          <select value={effectiveExercise} onChange={e => setRirExercise(e.target.value)}
+            style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+            {eligibleExercises.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+          </select>
+        </div>
+
+        {exerciseRows.length > 0 && (
+          <div style={{ marginBottom: 12, padding: "10px 12px", background: "var(--cream)", borderRadius: 3, border: "1px solid var(--cream3)", fontSize: 12, color: "var(--ink3)", lineHeight: 1.6 }}>
+            Accurate within 1 rep on <strong>{accuratePct}%</strong> of sets. Average discrepancy: <strong>{avgDiscStr} reps</strong>.
+            {stat && (
+              <span style={{ color: "var(--ink4)" }}>
+                {" "}[{stat.bestE1RMSource === "0-RIR" ? `anchored to 0-RIR set from ${stat.bestE1RMDate}` : "estimated e1RM"}]
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Table */}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                {["Date", "Weight × Reps", "Rep. RIR", "Calc. RIR", "Disc."].map(h => (
+                  <th key={h} style={{ ...labelStyle, display: "table-cell", fontSize: 10, padding: "4px 6px", textAlign: h === "Date" || h === "Weight × Reps" ? "left" : "center", borderBottom: "1.5px solid var(--border)", whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...exerciseRows].reverse().map((r, i) => {
+                const color = discrepancyColor(r.discrepancy);
+                const sign = r.discrepancy > 0 ? "+" : "";
+                return (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--cream3)" }}>
+                    <td style={{ padding: "6px 6px", color: "var(--ink3)", whiteSpace: "nowrap" }}>{r.date}</td>
+                    <td style={{ padding: "6px 6px", fontWeight: 600 }}>{r.weight}lb × {r.reps}</td>
+                    <td style={{ padding: "6px 6px", textAlign: "center" }}>{r.reportedRIR}</td>
+                    <td style={{ padding: "6px 6px", textAlign: "center" }}>{r.calcRIR}</td>
+                    <td style={{ padding: "6px 6px", textAlign: "center", fontWeight: 700, color }}>{sign}{r.discrepancy}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   const isVolume = report?.type === "volume";
   const isTime = report?.type === "time";
+  const isRIR = report?.type === "rir";
   const statLabels = isTime
     ? ["Avg Time/Wk", "Peak Week", "Active Weeks"]
     : isVolume
@@ -3817,46 +4299,82 @@ function AnalyticsScreen({ uid }) {
         </div>
       </div>
 
-      {/* Chart card — only shown after report runs */}
-      {report && (
-        <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-          <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 4, height: 16, background: "var(--orange)", borderRadius: 2 }} />
-            <span style={{ ...sectionLabelStyle, color: "var(--card)", fontSize: 11 }}>
-              {REPORTS.find(r => r.id === report.type)?.label}
-            </span>
-          </div>
-          <div style={{ padding: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: isTime ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
-              {!isTime && (
-                <div>
-                  <label style={{ ...labelStyle, marginBottom: 4 }}>Muscle Group</label>
-                  <select value={muscleGroup} onChange={e => setMuscleGroup(e.target.value)}
-                    style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
-                    {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label style={{ ...labelStyle, marginBottom: 4 }}>Period</label>
-                <select value={range} onChange={e => setRange(e.target.value)}
-                  style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
-                  <option value="8">8 Weeks</option>
-                  <option value="12">12 Weeks</option>
-                  <option value="26">6 Months</option>
-                  <option value="52">1 Year</option>
-                  <option value="all">All Time</option>
-                </select>
-              </div>
-            </div>
-            {isTime ? (
+      {/* Full-screen landscape overlay */}
+      {report && expanded && (() => {
+        const isPortrait = window.innerHeight > window.innerWidth;
+        const overlayContent = {
+          position: "absolute", top: "50%", left: "50%",
+          overflow: "auto", padding: 12, boxSizing: "border-box",
+          ...(isPortrait
+            ? { width: "100vh", height: "100vw", transform: "translate(-50%, -50%) rotate(90deg)" }
+            : { width: "100vw", height: "100vh", transform: "translate(-50%, -50%)" }),
+        };
+        return (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "var(--card)" }}>
+          <button onClick={() => setExpanded(false)}
+            style={{ position: "absolute", top: 14, right: 14, zIndex: 201, background: "var(--orange)", border: "none", color: "#fff", borderRadius: "50%", width: 34, height: 34, fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
+          <div style={overlayContent}>
+            {isRIR ? (
+              <RIRAccuracyView rows={report.data.rows || []} exStats={report.data.exStats || {}} />
+            ) : isTime ? (
               <TimeStackedBarChart data={timeChartData} />
             ) : report.type === "volume" ? (
               <VolumeLineChart data={chartData} />
             ) : (
               <BarChart data={chartData} />
             )}
-            {stats && (
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Chart card — only shown after report runs */}
+      {report && (
+        <div style={{ background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 4, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <div style={{ background: "var(--black)", padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 4, height: 16, background: "var(--orange)", borderRadius: 2 }} />
+              <span style={{ ...sectionLabelStyle, color: "var(--card)", fontSize: 11 }}>
+                {REPORTS.find(r => r.id === report.type)?.label}
+              </span>
+            </div>
+            <button onClick={() => setExpanded(true)}
+              style={{ background: "none", border: "none", color: "var(--ink4)", fontSize: 15, cursor: "pointer", padding: "2px 4px", lineHeight: 1, borderRadius: 3 }}
+              title="Expand to landscape">⛶</button>
+          </div>
+          <div style={{ padding: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: (isTime || isRIR) ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                {!isTime && !isRIR && (
+                  <div>
+                    <label style={{ ...labelStyle, marginBottom: 4 }}>Muscle Group</label>
+                    <select value={muscleGroup} onChange={e => setMuscleGroup(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+                      {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label style={{ ...labelStyle, marginBottom: 4 }}>Period</label>
+                  <select value={range} onChange={e => setRange(e.target.value)}
+                    style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+                    <option value="8">8 Weeks</option>
+                    <option value="12">12 Weeks</option>
+                    <option value="26">6 Months</option>
+                    <option value="52">1 Year</option>
+                    <option value="all">All Time</option>
+                  </select>
+                </div>
+              </div>
+            {isRIR ? (
+              <RIRAccuracyView rows={report.data.rows || []} exStats={report.data.exStats || {}} />
+            ) : isTime ? (
+              <TimeStackedBarChart data={timeChartData} />
+            ) : report.type === "volume" ? (
+              <VolumeLineChart data={chartData} />
+            ) : (
+              <BarChart data={chartData} />
+            )}
+            {!isRIR && stats && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
                 {[stats.avg, stats.peak, stats.weeks].map((value, i) => (
                   <div key={i} style={{ background: "var(--cream)", border: "1.5px solid var(--cream3)", borderRadius: 4, padding: "10px 8px", textAlign: "center" }}>
@@ -3869,6 +4387,7 @@ function AnalyticsScreen({ uid }) {
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -3896,6 +4415,11 @@ export default function App() {
   const [templates, setTemplates] = useState([]);
 
   useEffect(() => onAuthStateChanged(auth, u => setUser(u || null)), []);
+
+  useEffect(() => {
+    if (!user) return;
+    backfillExerciseStats(user.uid).catch(console.error);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;
@@ -4006,43 +4530,59 @@ export default function App() {
 
   if (!user) return <SignIn />;
 
-  if (logging) return (
-    <ActiveWorkout uid={user.uid} user={user} library={library} onAddToLibrary={addToLibrary}
-      onEnd={() => { clearWorkoutDraft(); setLogging(false); setPendingTemplate(null); setTab("history"); }}
-      restPrefs={restPrefs} onRestPrefChange={updateRestPref}
-      templates={templates} onSaveTemplate={() => {}}
-      pendingTemplate={pendingTemplate} />
-  );
+  const onWorkoutEnd = () => { clearWorkoutDraft(); setLogging(false); setPendingTemplate(null); setTab("history"); };
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--cream)", paddingBottom: 70 }}>
-      <div style={{ background: "var(--cream)", borderBottom: "2.5px solid var(--ink)" }}>
-        <div style={{ padding: "16px 18px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 8, letterSpacing: "0.32em", color: "var(--ink3)", textTransform: "uppercase", marginBottom: 6, fontWeight: 300, fontFamily: "var(--font-label)" }}>Workout Tracker</div>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 46, color: "var(--ink)", letterSpacing: "0.04em", lineHeight: 0.85 }}>FIT<br/>TRACKR</h1>
-            <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "var(--ink3)", marginTop: 6, fontWeight: 300, fontFamily: "var(--font-label)", textTransform: "uppercase" }}>
-              {tab === "history" ? "Training History" : tab === "analytics" ? "Analytics" : tab === "templates" ? "Templates" : "Profile"}
+      {/* App header — hidden while active workout is fullscreen on Log tab */}
+      {!(logging && tab === "log") && (
+        <div style={{ background: "var(--cream)", borderBottom: "2.5px solid var(--ink)" }}>
+          <div style={{ padding: "16px 18px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 8, letterSpacing: "0.32em", color: "var(--ink3)", textTransform: "uppercase", marginBottom: 6, fontWeight: 300, fontFamily: "var(--font-label)" }}>Workout Tracker</div>
+              <h1 style={{ fontFamily: "var(--font-display)", fontSize: 46, color: "var(--ink)", letterSpacing: "0.04em", lineHeight: 0.85 }}>FIT<br/>TRACKR</h1>
+              <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "var(--ink3)", marginTop: 6, fontWeight: 300, fontFamily: "var(--font-label)", textTransform: "uppercase" }}>
+                {tab === "history" ? "Training History" : tab === "analytics" ? "Analytics" : tab === "templates" ? "Templates" : tab === "lookup" ? "Exercise Lookup" : "Profile"}
+              </div>
             </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-            {/* Moholy-Nagy concentric circle motif */}
-            <div style={{ position: "relative", width: 64, height: 64, marginTop: 4 }}>
-              <div style={{ position: "absolute", width: 64, height: 64, border: "2.5px solid var(--ink)", borderRadius: "50%" }} />
-              <div style={{ position: "absolute", width: 42, height: 42, top: 11, left: 11, background: "var(--yellow)", borderRadius: "50%" }} />
-              <div style={{ position: "absolute", width: 21, height: 21, top: 21.5, left: 21.5, background: "var(--ink)", borderRadius: "50%" }} />
-              <div style={{ position: "absolute", width: 7, height: 7, top: 28.5, left: 28.5, background: "var(--yellow)", borderRadius: "50%" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <div style={{ position: "relative", width: 64, height: 64, marginTop: 4 }}>
+                <div style={{ position: "absolute", width: 64, height: 64, border: "2.5px solid var(--ink)", borderRadius: "50%" }} />
+                <div style={{ position: "absolute", width: 42, height: 42, top: 11, left: 11, background: "var(--yellow)", borderRadius: "50%" }} />
+                <div style={{ position: "absolute", width: 21, height: 21, top: 21.5, left: 21.5, background: "var(--ink)", borderRadius: "50%" }} />
+                <div style={{ position: "absolute", width: 7, height: 7, top: 28.5, left: 28.5, background: "var(--yellow)", borderRadius: "50%" }} />
+              </div>
+              {user?.photoURL && <img src={user.photoURL} style={{ width: 32, height: 32, borderRadius: 0, border: "2px solid var(--yellow)" }} alt="" />}
             </div>
-            {user?.photoURL && <img src={user.photoURL} style={{ width: 32, height: 32, borderRadius: 0, border: "2px solid var(--yellow)" }} alt="" />}
           </div>
         </div>
-      </div>
-      {tab === "history" && <HistoryScreen uid={user.uid} />}
+      )}
+
+      {/* Active workout — always mounted when logging so timers keep running; hidden via display:none when on another tab */}
+      {logging && (
+        <div style={{ display: tab === "log" ? "block" : "none" }}>
+          <ActiveWorkout uid={user.uid} user={user} library={library} onAddToLibrary={addToLibrary}
+            onEnd={onWorkoutEnd}
+            restPrefs={restPrefs} onRestPrefChange={updateRestPref}
+            templates={templates} onSaveTemplate={() => {}}
+            pendingTemplate={pendingTemplate} />
+        </div>
+      )}
+
+      {/* Tab screens */}
+      {tab === "history"   && <HistoryScreen uid={user.uid} />}
+      {tab === "lookup"    && <LookupScreen uid={user.uid} library={library} />}
       {tab === "analytics" && <AnalyticsScreen key={analyticsKey} uid={user.uid} />}
       {tab === "templates" && <TemplatesScreen uid={user.uid} templates={templates} onStartWorkout={t => { startFromTemplate(t); }} />}
-      {tab === "profile" && <ProfileScreen user={user} onSeedLibrary={seedLibrary} volumeBackfilled={!!library.volumeDataBackfilled} />}
+      {tab === "profile"   && <ProfileScreen user={user} onSeedLibrary={seedLibrary} volumeBackfilled={!!library.volumeDataBackfilled} />}
+
       <BugReportButton uid={user.uid} currentTab={tab} />
-      <BottomNav tab={tab} setTab={t => { if (t === "analytics") setAnalyticsKey(k => k + 1); setTab(t); }} onNewWorkout={() => setLogging(true)} />
+      <BottomNav
+        tab={tab}
+        setTab={t => { if (t === "analytics") setAnalyticsKey(k => k + 1); setTab(t); }}
+        onNewWorkout={() => { setTab("log"); setLogging(true); }}
+        logging={logging}
+      />
     </div>
   );
 }
