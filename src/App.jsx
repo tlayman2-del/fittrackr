@@ -676,6 +676,8 @@ function RestTimer({ restSecs, defaultRestSecs, onRestChange, onDone }) {
 
 // ── Set Row ───────────────────────────────────────────────────────────────────
 const CARDIO_MUSCLE_GROUPS = new Set(["Cardio"]);
+const UPPER_MUSCLE_GROUPS = new Set(["Back", "Biceps", "Chest", "Shoulders", "Traps", "Triceps"]);
+const LOWER_MUSCLE_GROUPS = new Set(["Abductors", "Adductors", "Calves", "Glutes", "Hamstrings", "Quads"]);
 
 // Set-row grid templates. The partials column is narrower than the rest —
 // it only ever holds a single digit or two.
@@ -902,6 +904,8 @@ function SetRow({ set, index, onChange, onRemove, defaultRestSecs, onRestChange,
 // ── Exercise Card ─────────────────────────────────────────────────────────────
 function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAddToLibrary, isActive, paused, onSetActive, restPrefs, onRestPrefChange, activeRestKeys, onSetRestActive, onClearRestKey, activeElapsedRef, onInteract, onDragHandleTouchStart, onDragHandleMouseDown, dragMode, isDragged, onFocusNextExercise, onToggleSuperset }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
   const [prWeightValue, setPrWeightValue] = useState(null);
   const [bestE1RM, setBestE1RM] = useState(null);
   const [elapsed, setElapsed] = useState(exercise.durationSec || 0);
@@ -1136,25 +1140,11 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
             <label style={{ ...labelStyle, fontSize: 10, marginBottom: 4 }}>Exercise Name</label>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1 }}>
-                <ComboBox
-                  value={exercise.name}
-                  onChange={val => onChange({ ...exercise, name: val })}
-                  onSelect={handleExerciseSelect}
-                  options={(() => {
-                    const all = library.exercises || [];
-                    if (!exercise.muscleGroup) return [...all].sort((a, b) => a.localeCompare(b));
-                    const inGroup = EXERCISE_LIBRARY
-                      .filter(e => (e.primaryGroup || e.muscleGroup) === exercise.muscleGroup)
-                      .map(e => e.name);
-                    const customMappings = library.muscleGroupMappings || {};
-                    const filtered = all.filter(name =>
-                      inGroup.some(n => n.toLowerCase() === name.toLowerCase()) ||
-                      customMappings[name]?.primaryGroup === exercise.muscleGroup
-                    );
-                    return filtered.sort((a, b) => a.localeCompare(b));
-                  })()}
-                  placeholder={exercise.muscleGroup ? `${exercise.muscleGroup} exercises…` : "Select muscle group first…"}
-                />
+                <button
+                  onClick={() => { setPickerSearch(""); setShowPicker(true); }}
+                  style={{ ...inputStyle, width: "100%", textAlign: "left", cursor: "pointer", padding: "9px 11px", fontSize: 15, color: exercise.name ? "var(--ink)" : "var(--ink4)", fontFamily: "var(--font-body)", background: "var(--cream)", border: "1.5px solid var(--border)", borderRadius: 3 }}>
+                  {exercise.name || (exercise.muscleGroup ? `${exercise.muscleGroup} exercises…` : "Select muscle group first…")}
+                </button>
                 {exercise.name && exercise.name.trim() && !(library.exercises || []).map(e => e.toLowerCase()).includes(exercise.name.trim().toLowerCase()) && (
                   <button onMouseDown={e => { e.preventDefault(); onAddToLibrary("exercises", exercise.name.trim(), exercise.muscleGroup); }}
                     style={{ marginTop: 5, width: "100%", padding: "7px 8px", background: "transparent", border: "1.5px dashed var(--orange2)", borderRadius: 3, color: "var(--orange)", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-label)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer" }}>
@@ -1165,6 +1155,67 @@ function ExerciseCard({ exercise, index, onChange, onRemove, uid, library, onAdd
               {exercise.name && <button onClick={() => setShowHistory(true)} style={{ ...btnStyle("ghost"), padding: "7px 10px", fontSize: 14 }}>📋</button>}
             </div>
           </div>
+          {/* Exercise picker bottom sheet */}
+          {showPicker && (() => {
+            const all = library.exercises || [];
+            const pickerOptions = (() => {
+              if (!exercise.muscleGroup) return [...all].sort((a, b) => a.localeCompare(b));
+              const inGroup = EXERCISE_LIBRARY
+                .filter(e => (e.primaryGroup || e.muscleGroup) === exercise.muscleGroup)
+                .map(e => e.name);
+              const customMappings = library.muscleGroupMappings || {};
+              return all.filter(name =>
+                inGroup.some(n => n.toLowerCase() === name.toLowerCase()) ||
+                customMappings[name]?.primaryGroup === exercise.muscleGroup
+              ).sort((a, b) => a.localeCompare(b));
+            })();
+            const filtered = pickerSearch.trim()
+              ? pickerOptions.filter(n => n.toLowerCase().includes(pickerSearch.toLowerCase()))
+              : pickerOptions;
+            const exactMatch = pickerOptions.some(n => n.toLowerCase() === pickerSearch.trim().toLowerCase());
+            return (
+              <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+                onClick={e => { if (e.target === e.currentTarget) { setShowPicker(false); setPickerSearch(""); } }}>
+                <div style={{ background: "rgba(0,0,0,0.45)", position: "absolute", inset: 0 }}
+                  onClick={() => { setShowPicker(false); setPickerSearch(""); }} />
+                <div style={{ position: "relative", background: "var(--card)", borderRadius: "12px 12px 0 0", display: "flex", flexDirection: "column", maxHeight: "85vh", boxShadow: "0 -4px 24px rgba(0,0,0,0.18)" }}>
+                  <div style={{ padding: "10px 16px 0", textAlign: "center" }}>
+                    <div style={{ width: 36, height: 4, background: "var(--cream3)", borderRadius: 2, margin: "0 auto 10px" }} />
+                  </div>
+                  <div style={{ padding: "0 16px 10px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1.5px solid var(--cream3)" }}>
+                    <input
+                      autoFocus
+                      value={pickerSearch}
+                      onChange={e => setPickerSearch(e.target.value)}
+                      placeholder="Search exercises…"
+                      style={{ ...inputStyle, flex: 1, fontSize: 15, padding: "9px 11px" }}
+                    />
+                    <button onClick={() => { setShowPicker(false); setPickerSearch(""); }}
+                      style={{ background: "none", border: "none", color: "var(--ink3)", fontSize: 22, cursor: "pointer", padding: "4px 6px", lineHeight: 1 }}>✕</button>
+                  </div>
+                  <div style={{ overflowY: "auto", flex: 1 }}>
+                    {filtered.map(name => (
+                      <button key={name}
+                        onPointerDown={e => { e.preventDefault(); onChange({ ...exercise, name }); handleExerciseSelect(name); setShowPicker(false); setPickerSearch(""); }}
+                        style={{ display: "block", width: "100%", textAlign: "left", padding: "13px 16px", background: exercise.name === name ? "var(--cream2)" : "none", border: "none", borderBottom: "1px solid var(--cream3)", fontSize: 15, color: "var(--ink)", cursor: "pointer", fontFamily: "var(--font-body)" }}>
+                        {name}
+                      </button>
+                    ))}
+                    {pickerSearch.trim() && !exactMatch && (
+                      <button
+                        onPointerDown={e => { e.preventDefault(); onChange({ ...exercise, name: pickerSearch.trim() }); setShowPicker(false); setPickerSearch(""); }}
+                        style={{ display: "block", width: "100%", textAlign: "left", padding: "13px 16px", background: "none", border: "none", borderBottom: "1px solid var(--cream3)", fontSize: 15, color: "var(--orange)", cursor: "pointer", fontFamily: "var(--font-body)", fontWeight: 600 }}>
+                        Use "{pickerSearch.trim()}"
+                      </button>
+                    )}
+                    {filtered.length === 0 && !pickerSearch.trim() && (
+                      <div style={{ padding: "20px 16px", color: "var(--ink4)", fontSize: 14, textAlign: "center" }}>No exercises in library yet</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
 {exercise.timerStarted && (isActive || !!exercise.supersetId) && (
@@ -1265,7 +1316,7 @@ function clearWorkoutDraft() {
 // ── Session Summary Screen ────────────────────────────────────────────────────
 function SessionSummaryScreen({ stats, onDismiss }) {
   const { totalVolume, hiPct } = stats;
-  const hiColor = hiPct >= 60 ? "var(--orange)" : hiPct >= 40 ? "var(--ink2)" : "#4a90d9";
+  const hiColor = "var(--red)";
   return (
     <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32 }}>
       <div className="fade-in" style={{ width: "100%", maxWidth: 360 }}>
@@ -1642,6 +1693,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
 
       const elapsedMs = activeMsRef.current + (activeStartMsRef.current ? Date.now() - activeStartMsRef.current : 0);
       const effectiveTotalSeconds = Math.round(elapsedMs / 1000);
+      const { totalVolume: wTotalVolume } = computeSessionStats(exercises);
 
       const wRef = await addDoc(collection(db, "users", uid, "workouts"), {
         date: workout.date, location: workout.location, workoutType: workout.workoutType,
@@ -1650,6 +1702,7 @@ function ActiveWorkout({ uid, user, library, onAddToLibrary, onEnd, restPrefs, o
         sleepQuality: sleepQuality || null, energyLevel: energyLevel || null,
         postRating: postRating || null,
         userName: user.displayName || null,
+        totalVolume: wTotalVolume || null,
       });
       for (const { ex, i, cleanSets, durationSec, primaryGroup, primarySets, secondarySets } of exerciseDataList) {
         await addDoc(collection(db, "users", uid, "workouts", wRef.id, "exercises"), {
@@ -2601,6 +2654,11 @@ function HistoryScreen({ uid }) {
                   {w.energyLevel && <span style={{ fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)" }}>⚡ {w.energyLevel}/5</span>}
                 </div>
               )}
+              {w.totalVolume > 0 && (
+                <div style={{ marginTop: 3, fontSize: 11, color: "var(--ink4)", fontFamily: "var(--font-label)", letterSpacing: "0.04em" }}>
+                  {w.totalVolume.toLocaleString()} lbs tonnage
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {w.totalSeconds > 0 && <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--ink3)" }}>{formatTime(w.totalSeconds)}</div>}
@@ -3297,11 +3355,14 @@ function AnalyticsScreen({ uid }) {
   const [rirView, setRirView]       = useState("exercise"); // "exercise" | "ranked"
   const [rirExercise, setRirExercise] = useState("");
   const [expanded, setExpanded]     = useState(false);
+  const [sessionVolumeData, setSessionVolumeData] = useState(null);
+  const [sessionVolumeFilter, setSessionVolumeFilter] = useState("All"); // "All" | "Upper" | "Lower" | muscle group name
   const REPORTS = [
-    { id: "sets",    label: "Sets Per Week",    desc: "Total sets by muscle group per week — primary sets (orange) + secondary fractional credits (blue)" },
-    { id: "volume",  label: "Volume Per Week",  desc: "Total volume with high-intensity portion (≥75% e1RM) stacked, plus hi% line — primary sets only" },
-    { id: "time",    label: "Time Per Week",    desc: "Hours spent per week split between lifting (orange) and cardio (teal) — stacked bar chart" },
-    { id: "rir",     label: "RIR Accuracy",     desc: "Compare reported vs. calculated RIR set by set — see where your effort perception diverges from your e1RM model" },
+    { id: "sets",           label: "Sets Per Week",        desc: "Total sets by muscle group per week — primary sets (orange) + secondary fractional credits (blue)" },
+    { id: "volume",         label: "Volume Per Week",      desc: "Total volume with high-intensity portion (≥75% e1RM) stacked, plus hi% line — primary sets only" },
+    { id: "session_volume", label: "Volume by Session",    desc: "Total tonnage per individual session — filter by body part, upper, or lower body" },
+    { id: "time",           label: "Time Per Week",        desc: "Hours spent per week split between lifting (orange) and cardio (teal) — stacked bar chart" },
+    { id: "rir",            label: "RIR Accuracy",         desc: "Compare reported vs. calculated RIR set by set — see where your effort perception diverges from your e1RM model" },
   ];
 
   // Load all exercise data — parallel fetching for speed
@@ -3428,6 +3489,44 @@ function AnalyticsScreen({ uid }) {
     } catch (e) { console.error(e); return { rows: [], exStats: {} }; }
   }
 
+  async function loadSessionVolumeData() {
+    try {
+      const wSnap = await getDocs(query(collection(db, "users", uid, "workouts"), orderBy("date", "asc")));
+      const results = await Promise.all(
+        wSnap.docs.map(async wDoc => {
+          const wDate = wDoc.data().date;
+          if (!wDate) return null;
+          const eSnap = await getDocs(collection(db, "users", uid, "workouts", wDoc.id, "exercises"));
+          let totalVol = 0, totalHi = 0;
+          const byGroup = {}, hiByGroup = {};
+          for (const eDoc of eSnap.docs) {
+            const ex = eDoc.data();
+            const mg = ex.muscleGroup;
+            if (!mg) continue;
+            const validSets = (ex.sets || []).filter(s => effectiveReps(s) > 0 && s.weight);
+            const { totalVol: exVol, hiVol: exHi } = computeSetVolumes(validSets);
+            totalVol += exVol;
+            totalHi += exHi;
+            byGroup[mg] = (byGroup[mg] || 0) + exVol;
+            hiByGroup[mg] = (hiByGroup[mg] || 0) + exHi;
+          }
+          if (totalVol === 0) return null;
+          const roundedByGroup = {}, roundedHiByGroup = {};
+          for (const [g, v] of Object.entries(byGroup)) roundedByGroup[g] = Math.round(v);
+          for (const [g, v] of Object.entries(hiByGroup)) roundedHiByGroup[g] = Math.round(v);
+          const upper = Object.entries(roundedByGroup).reduce((s, [g, v]) => UPPER_MUSCLE_GROUPS.has(g) ? s + v : s, 0);
+          const lower = Object.entries(roundedByGroup).reduce((s, [g, v]) => LOWER_MUSCLE_GROUPS.has(g) ? s + v : s, 0);
+          const upperHi = Object.entries(roundedHiByGroup).reduce((s, [g, v]) => UPPER_MUSCLE_GROUPS.has(g) ? s + v : s, 0);
+          const lowerHi = Object.entries(roundedHiByGroup).reduce((s, [g, v]) => LOWER_MUSCLE_GROUPS.has(g) ? s + v : s, 0);
+          return { date: wDate, total: Math.round(totalVol), hi: Math.round(totalHi), upper, lower, upperHi, lowerHi, byGroup: roundedByGroup, hiByGroup: roundedHiByGroup };
+        })
+      );
+      const data = results.filter(Boolean);
+      setSessionVolumeData(data);
+      return data;
+    } catch (e) { console.error(e); return []; }
+  }
+
   async function runReport() {
     setRunning(true);
     try {
@@ -3439,6 +3538,10 @@ function AnalyticsScreen({ uid }) {
         let data = rirData;
         if (!data) data = await loadRirData();
         setReport({ type: "rir", data: data || { rows: [], exStats: {} } });
+      } else if (selectedReport === "session_volume") {
+        let data = sessionVolumeData;
+        if (!data) data = await loadSessionVolumeData();
+        setReport({ type: "session_volume", data: data || [] });
       } else {
         let data = allData;
         if (!data) data = await loadData();
@@ -3452,9 +3555,39 @@ function AnalyticsScreen({ uid }) {
   const addWeeks = analyticsAddWeeks;
   const formatWeekLabel = analyticsFormatWeekLabel;
 
+  const sessionAvailableGroups = useMemo(() => {
+    if (report?.type !== "session_volume" || !Array.isArray(report.data)) return [];
+    const groups = new Set();
+    for (const r of report.data) {
+      for (const g of Object.keys(r.byGroup || {})) groups.add(g);
+    }
+    return [...groups].sort();
+  }, [report]);
+
+  const sessionChartData = useMemo(() => {
+    if (report?.type !== "session_volume" || !Array.isArray(report.data)) return [];
+    const today = new Date();
+    let cutoff = null;
+    if (range !== "all") {
+      const d = new Date(today);
+      d.setDate(d.getDate() - parseInt(range) * 7);
+      cutoff = d.toISOString().slice(0, 10);
+    }
+    const filtered = cutoff ? report.data.filter(r => r.date >= cutoff) : report.data;
+    return filtered.map(r => {
+      let value, hi;
+      if (sessionVolumeFilter === "All") { value = r.total; hi = r.hi; }
+      else if (sessionVolumeFilter === "Upper") { value = r.upper; hi = r.upperHi; }
+      else if (sessionVolumeFilter === "Lower") { value = r.lower; hi = r.lowerHi; }
+      else { value = (r.byGroup || {})[sessionVolumeFilter] || 0; hi = (r.hiByGroup || {})[sessionVolumeFilter] || 0; }
+      const lo = Math.max(0, value - (hi || 0));
+      return { label: r.date.slice(5), date: r.date, value, hi: hi || 0, lo };
+    });
+  }, [report, range, sessionVolumeFilter]);
+
   const chartData = useMemo(() => {
     if (!report?.data) return [];
-    if (report.type === "rir" || report.type === "time") return [];
+    if (report.type === "rir" || report.type === "time" || report.type === "session_volume") return [];
     const isVolume = report.type === "volume";
     const filtered = muscleGroup === "All"
       ? report.data
@@ -3513,7 +3646,7 @@ function AnalyticsScreen({ uid }) {
   }, [report, muscleGroup, range]);
 
   const availableGroups = useMemo(() => {
-    if (!report?.data || report.type === "rir" || report.type === "time") return ["All", ...MUSCLE_GROUPS];
+    if (!report?.data || report.type === "rir" || report.type === "time" || report.type === "session_volume") return ["All", ...MUSCLE_GROUPS];
     return ["All", ...[...new Set(report.data.map(r => r.muscleGroup))].sort()];
   }, [report]);
 
@@ -3567,6 +3700,15 @@ function AnalyticsScreen({ uid }) {
       const peak = formatHM(Math.max(...nonZero.map(d => d.value)));
       return { avg, peak, weeks: nonZero.length };
     }
+    if (report?.type === "session_volume") {
+      if (!sessionChartData.length) return null;
+      const nonZero = sessionChartData.filter(d => d.value > 0);
+      if (!nonZero.length) return null;
+      const total = nonZero.reduce((s, d) => s + d.value, 0);
+      const avg = Math.round(total / nonZero.length).toLocaleString();
+      const peak = Math.max(...nonZero.map(d => d.value)).toLocaleString();
+      return { avg: `${avg} lbs`, peak: `${peak} lbs`, weeks: nonZero.length };
+    }
     if (!chartData.length) return null;
     const nonZero = chartData.filter(d => d.value > 0);
     if (!nonZero.length) return null;
@@ -3575,7 +3717,7 @@ function AnalyticsScreen({ uid }) {
     const avg = (total / chartData.length).toFixed(isVol ? 0 : 1);
     const peak = Math.max(...nonZero.map(d => d.value));
     return { avg, peak: isVol ? Math.round(peak).toLocaleString() : peak, weeks: nonZero.length };
-  }, [chartData, timeChartData, report]);
+  }, [chartData, timeChartData, sessionChartData, report]);
 
   function formatValue(v) {
     if (report?.type === "volume") return Math.round(v).toLocaleString();
@@ -3744,6 +3886,144 @@ function AnalyticsScreen({ uid }) {
   }
 
 
+  function SessionVolumeChart({ data }) {
+    const containerRef = useRef(null);
+    const [width, setWidth] = useState(340);
+    const [tooltip, setTooltip] = useState(null);
+
+    useEffect(() => {
+      if (!containerRef.current) return;
+      const obs = new ResizeObserver(entries => setWidth(entries[0].contentRect.width || 340));
+      obs.observe(containerRef.current);
+      return () => obs.disconnect();
+    }, []);
+
+    if (!data.length) return (
+      <div style={{ padding: 32, textAlign: "center", color: "var(--ink3)", fontSize: 14 }}>No session data in this period.</div>
+    );
+
+    const W = width, H = 280, padL = 52, padR = 40, padT = 24, padB = 40;
+    const chartW = W - padL - padR;
+    const chartH = H - padT - padB;
+    const n = data.length;
+    const maxVal = Math.max(...data.map(d => d.value), 1);
+    const yMax = Math.ceil(maxVal / 1000) * 1000 || 1000;
+    const slotW = chartW / n;
+    const barW = Math.max(2, Math.min(28, slotW * 0.65));
+    function bx(i) { return padL + i * slotW + slotW / 2; }
+    function py(v) { return padT + chartH - (v / yMax) * chartH; }
+    function bh(v) { return (v / yMax) * chartH; }
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(yMax * f));
+    const labelEvery = n <= 12 ? 1 : n <= 26 ? 2 : Math.ceil(n / 10);
+    function formatYTick(v) { return v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v; }
+
+    // Hi% line (right axis)
+    const pctData = data.map(d => d.value > 0 ? (d.hi / d.value) * 100 : null);
+    const validPcts = pctData.filter(p => p !== null);
+    const minPct = validPcts.length ? Math.floor(Math.min(...validPcts) / 5) * 5 : 0;
+    const maxPct = validPcts.length ? Math.ceil(Math.max(...validPcts) / 5) * 5 : 100;
+    const pctRange = maxPct - minPct || 10;
+    function pyPct(p) { return padT + chartH - ((p - minPct) / pctRange) * chartH; }
+    const pctTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(minPct + pctRange * f));
+    const linePoints = data.map((d, i) => pctData[i] !== null ? `${bx(i)},${pyPct(pctData[i])}` : null).filter(Boolean).join(" ");
+
+    // Trend on the % line
+    const trendPts = pctData.map((p, i) => p !== null ? { x: i, y: p } : null).filter(Boolean);
+    const tn = trendPts.length;
+    const showTrend = tn >= 3;
+    let trendColor = "var(--ink3)", trendArrow = "—", trendLabel = "Flat";
+    if (showTrend) {
+      const tmx = trendPts.reduce((s, p) => s + p.x, 0) / tn;
+      const tmy = trendPts.reduce((s, p) => s + p.y, 0) / tn;
+      const tnum = trendPts.reduce((s, p) => s + (p.x - tmx) * (p.y - tmy), 0);
+      const tden = trendPts.reduce((s, p) => s + (p.x - tmx) ** 2, 0);
+      const slope = tden !== 0 ? tnum / tden : 0;
+      const rising = slope > 0.05;
+      const falling = slope < -0.05;
+      trendColor = rising ? "var(--green)" : falling ? "var(--red)" : "var(--ink3)";
+      trendArrow = rising ? "▲" : falling ? "▼" : "—";
+      trendLabel = rising ? "Trending Up" : falling ? "Trending Down" : "Flat";
+    }
+
+    return (
+      <div ref={containerRef} style={{ width: "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 14 }}>
+            {[["var(--red)", "HIGH-INTENSITY"], ["var(--black)", "STANDARD"]].map(([color, label]) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+                <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.06em" }}>{label}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <svg width={20} height={12}><polyline points="0,9 10,3 20,6" fill="none" stroke="#4a90d9" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink4)", letterSpacing: "0.06em" }}>HI%</span>
+            </div>
+          </div>
+          {showTrend && (
+            <span style={{
+              fontSize: 11, fontFamily: "var(--font-label)", fontWeight: 700,
+              letterSpacing: "0.08em", textTransform: "uppercase", color: trendColor,
+              background: trendColor === "var(--green)" ? "rgba(26,122,58,0.10)" : trendColor === "var(--red)" ? "rgba(192,37,26,0.10)" : "rgba(0,0,0,0.06)",
+              padding: "3px 8px", borderRadius: 3,
+            }}>{trendArrow} {trendLabel}</span>
+          )}
+        </div>
+        <svg width={W} height={H} style={{ display: "block", width: "100%", fontFamily: "var(--font-label)" }}
+          onMouseLeave={() => setTooltip(null)} onTouchEnd={() => setTimeout(() => setTooltip(null), 1800)}>
+          {/* Left axis — volume */}
+          {yTicks.map(v => (
+            <g key={v}>
+              <line x1={padL} x2={W - padR} y1={py(v)} y2={py(v)} stroke="var(--cream3)" strokeWidth={1} />
+              <text x={padL - 4} y={py(v) + 4} textAnchor="end" fill="var(--ink4)" fontSize={9}>{formatYTick(v)}</text>
+            </g>
+          ))}
+          {/* Right axis — hi% */}
+          {pctTicks.map(p => (
+            <text key={p} x={W - padR + 4} y={pyPct(p) + 4} textAnchor="start" fill="#4a90d9" fontSize={9} opacity={0.85}>{p}%</text>
+          ))}
+          {/* Bars */}
+          {data.map((d, i) => {
+            const isHovered = tooltip?.i === i;
+            const hLo = bh(d.lo);
+            const hHi = bh(d.hi);
+            return (
+              <g key={i} onMouseEnter={() => setTooltip({ i, d })} onTouchStart={() => setTooltip({ i, d })}>
+                <rect x={bx(i) - slotW / 2} y={padT} width={slotW} height={chartH} fill="transparent" />
+                {hLo > 0 && <rect x={bx(i) - barW / 2} y={py(d.lo)} width={barW} height={hLo} rx={2} fill="var(--black)" opacity={isHovered ? 0.8 : 0.6} />}
+                {hHi > 0 && <rect x={bx(i) - barW / 2} y={py(d.value)} width={barW} height={hHi} rx={2} fill="var(--red)" opacity={isHovered ? 1 : 0.85} />}
+              </g>
+            );
+          })}
+          {/* Hi% line */}
+          {linePoints && (
+            <polyline points={linePoints} fill="none" stroke="#4a90d9" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+          )}
+          {/* Dots on line */}
+          {data.map((d, i) => pctData[i] !== null && (
+            <circle key={i} cx={bx(i)} cy={pyPct(pctData[i])} r={tooltip?.i === i ? 5 : 3}
+              fill={tooltip?.i === i ? "#4a90d9" : "var(--card)"} stroke="#4a90d9" strokeWidth={2} />
+          ))}
+          {/* Date labels */}
+          {data.map((d, i) => i % labelEvery === 0 ? (
+            <text key={i} x={bx(i)} y={H - padB + 14} textAnchor="middle" fill="var(--ink4)" fontSize={9}>{d.label}</text>
+          ) : null)}
+        </svg>
+        {tooltip && (() => {
+          const d = tooltip.d;
+          const pct = d.value > 0 ? ((d.hi / d.value) * 100).toFixed(1) : "—";
+          return (
+            <div style={{ fontSize: 12, color: "var(--ink3)", fontFamily: "var(--font-label)", textAlign: "center", marginTop: 4 }}>
+              {d.date}: <strong>{d.value.toLocaleString()} lbs</strong>
+              {" · "}<span style={{ color: "var(--red)" }}>{d.hi.toLocaleString()} hi ({pct}%)</span>
+              {" · "}<span style={{ color: "var(--ink3)" }}>{d.lo.toLocaleString()} std</span>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  }
+
   function VolumeLineChart({ data }) {
     const containerRef = useRef(null);
     const [width, setWidth] = useState(340);
@@ -3821,11 +4101,11 @@ function AnalyticsScreen({ uid }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 2, background: "var(--orange)" }} />
+              <div style={{ width: 12, height: 12, borderRadius: 2, background: "var(--red)" }} />
               <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink3)", letterSpacing: "0.06em" }}>HI INTENSITY</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 2, background: "var(--red)" }} />
+              <div style={{ width: 12, height: 12, borderRadius: 2, background: "var(--black)" }} />
               <span style={{ fontSize: 10, fontFamily: "var(--font-label)", color: "var(--ink3)", letterSpacing: "0.06em" }}>STANDARD</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -3869,15 +4149,15 @@ function AnalyticsScreen({ uid }) {
             return (
               <g key={i} onMouseEnter={() => setTooltip({ i, d })} onTouchStart={() => setTooltip({ i, d })}>
                 <rect x={bx(i) - slotW / 2} y={padT} width={slotW} height={chartH} fill="transparent" />
-                {/* Standard volume (top, lighter) */}
+                {/* Standard volume (bottom) */}
                 {stdH > 0 && (
                   <rect x={x} y={pyVol(d.value)} width={barW} height={stdH} rx={0}
-                    fill="var(--red)" opacity={isHov ? 1 : 0.9} />
+                    fill="var(--black)" opacity={isHov ? 0.8 : 0.6} />
                 )}
-                {/* Hi-intensity volume (bottom, orange) */}
+                {/* Hi-intensity volume (top, red) */}
                 {hiH > 0 && (
                   <rect x={x} y={pyVol(d.hi || 0)} width={barW} height={hiH}
-                    rx={2} fill={isHov ? "var(--orange2)" : "var(--orange)"} opacity={isHov ? 1 : 0.85}
+                    rx={2} fill="var(--red)" opacity={isHov ? 1 : 0.85}
                     style={{ borderRadius: stdH > 0 ? "0 0 2px 2px" : "2px" }} />
                 )}
               </g>
@@ -3911,8 +4191,8 @@ function AnalyticsScreen({ uid }) {
               <g>
                 <rect x={tx} y={ty} width={boxW} height={56} rx={3} fill="var(--black)" opacity={0.92} />
                 <text x={tx + 8} y={ty + 14} fill="var(--ink4)" fontSize={9}>{d.label}</text>
-                <text x={tx + 8} y={ty + 28} fill="var(--orange)" fontSize={10} fontWeight={700}>Hi: {Math.round(d.hi || 0).toLocaleString()} ({pct}%)</text>
-                <text x={tx + 8} y={ty + 42} fill="var(--red)" fontSize={10} fontWeight={700}>Std: {Math.round(stdVol).toLocaleString()}</text>
+                <text x={tx + 8} y={ty + 28} fill="var(--red)" fontSize={10} fontWeight={700}>Hi: {Math.round(d.hi || 0).toLocaleString()} ({pct}%)</text>
+                <text x={tx + 8} y={ty + 42} fill="var(--ink3)" fontSize={10} fontWeight={700}>Std: {Math.round(stdVol).toLocaleString()}</text>
               </g>
             );
           })()}
@@ -4267,11 +4547,14 @@ function AnalyticsScreen({ uid }) {
   const isVolume = report?.type === "volume";
   const isTime = report?.type === "time";
   const isRIR = report?.type === "rir";
+  const isSessionVolume = report?.type === "session_volume";
   const statLabels = isTime
     ? ["Avg Time/Wk", "Peak Week", "Active Weeks"]
     : isVolume
       ? ["Avg Vol/Wk", "Peak Week", "Active Weeks"]
-      : ["Avg Sets/Wk", "Peak Week", "Active Weeks"];
+      : isSessionVolume
+        ? ["Avg Vol/Session", "Peak Session", "Sessions"]
+        : ["Avg Sets/Wk", "Peak Week", "Active Weeks"];
 
   return (
     <div style={{ padding: "16px 16px 32px" }}>
@@ -4318,6 +4601,8 @@ function AnalyticsScreen({ uid }) {
               <RIRAccuracyView rows={report.data.rows || []} exStats={report.data.exStats || {}} />
             ) : isTime ? (
               <TimeStackedBarChart data={timeChartData} />
+            ) : isSessionVolume ? (
+              <SessionVolumeChart data={sessionChartData} />
             ) : report.type === "volume" ? (
               <VolumeLineChart data={chartData} />
             ) : (
@@ -4344,12 +4629,24 @@ function AnalyticsScreen({ uid }) {
           </div>
           <div style={{ padding: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: (isTime || isRIR) ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                {!isTime && !isRIR && (
+                {!isTime && !isRIR && !isSessionVolume && (
                   <div>
                     <label style={{ ...labelStyle, marginBottom: 4 }}>Muscle Group</label>
                     <select value={muscleGroup} onChange={e => setMuscleGroup(e.target.value)}
                       style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
                       {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                )}
+                {isSessionVolume && (
+                  <div>
+                    <label style={{ ...labelStyle, marginBottom: 4 }}>Body Part</label>
+                    <select value={sessionVolumeFilter} onChange={e => setSessionVolumeFilter(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 14, padding: "8px 10px" }}>
+                      <option value="All">All (Total)</option>
+                      <option value="Upper">Upper Body</option>
+                      <option value="Lower">Lower Body</option>
+                      {sessionAvailableGroups.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                   </div>
                 )}
@@ -4369,6 +4666,8 @@ function AnalyticsScreen({ uid }) {
               <RIRAccuracyView rows={report.data.rows || []} exStats={report.data.exStats || {}} />
             ) : isTime ? (
               <TimeStackedBarChart data={timeChartData} />
+            ) : isSessionVolume ? (
+              <SessionVolumeChart data={sessionChartData} />
             ) : report.type === "volume" ? (
               <VolumeLineChart data={chartData} />
             ) : (
